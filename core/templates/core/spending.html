@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-baseline mb-3">
+  <h4 class="mb-0">Spending</h4>
+  <a class="small" href="?confirmed={% if confirmed_only %}0{% else %}1{% endif %}">{% if confirmed_only %}Include unconfirmed guesses{% else %}Confirmed only{% endif %}</a>
+</div>
+{% if not rows %}
+  <div class="alert alert-light border">No spending yet. Upload bank and credit-card statements on the <a href="{% url 'statements' %}">Statements</a> page.</div>
+{% else %}
+{% if suggestion %}
+<div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-center">
+  <div>
+    <div class="kpi-label">Actual monthly spending (average of {{ suggestion.months|length }} complete month{{ suggestion.months|length|pluralize }})</div>
+    <div class="kpi">{{ suggestion.avg_spend|inr }}{% if suggestion.include_emi %} <span class="fs-6 text-muted">+ {{ suggestion.avg_emi|inr }} EMI = {{ suggestion.amount|inr }}</span>{% endif %}</div>
+    <div class="small text-muted">{% if suggestion.current %}Your Plan currently uses {{ suggestion.current|inr }}.{% else %}No expense figure on the Plan page yet.{% endif %}</div>
+  </div>
+  <form method="post" action="{% url 'spending_adopt' %}">{% csrf_token %}<button class="btn btn-primary">Use {{ suggestion.amount|inr }} in the Plan</button></form>
+</div></div>
+{% else %}
+<div class="alert alert-warning py-2">No complete month yet: a month counts once every bank account and card you've uploaded statements for covers the whole month.</div>
+{% endif %}
+<div class="card mb-3"><div class="card-body"><canvas id="spendChart" height="90"></canvas></div></div>
+<div class="card"><div class="card-body">
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th>Biggest categories</th><th>Coverage</th></tr></thead>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.month|date:"M Y" }}</td>
+      <td class="num">{{ r.spend|inr }}{% if r.unconfirmed %}<div class="small text-muted">{{ r.unconfirmed|inr }} unconfirmed</div>{% endif %}</td>
+      <td class="num">{{ r.emi|inr }}</td>
+      <td class="small">{% for c, v in r.by_cat.items %}{% if forloop.counter <= 4 %}{{ c }} {{ v|inr }}{% if not forloop.last and forloop.counter < 4 %} · {% endif %}{% endif %}{% endfor %}</td>
+      <td class="small">{% if r.complete %}<span class="text-success">complete</span>{% else %}<span class="text-warning">missing: {% for a in r.missing %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if rows %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const D = {{ chart_json|safe }};
+const palette = ['#2a6fdb','#e07a2f','#3a9d5d','#c0392b','#8e6bbf','#d4a017','#1abc9c','#7f8c8d','#e84393','#34495e','#16a085','#a0522d','#6c5ce7','#00b894','#999'];
+const fmt = v => Math.abs(v) >= 1e5 ? (v/1e5).toFixed(1)+' L' : Math.round(v).toLocaleString('en-IN');
+new Chart(document.getElementById('spendChart'), {
+  type: 'bar',
+  data: {labels: D.labels, datasets: Object.entries(D.series).map(([k, v], i) => ({label: k, data: v, backgroundColor: palette[i % palette.length], stack: 's'}))},
+  options: {scales: {y: {ticks: {callback: v => '₹' + fmt(v)}}}, plugins: {tooltip: {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}}}}
+});
+</script>
+{% endif %}
+{% endblock %}

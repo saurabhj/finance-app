@@ -1,0 +1,312 @@
+import datetime as dt
+import io
+import json
+from decimal import Decimal as D
+from types import SimpleNamespace
+
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+
+from core import analytics
+from core.models import (Account, Balance, CashFlow, CategoryRule, Instrument, MonthlyExpense, Person, Snapshot,
+                         StatementUpload, Transaction)
+from integrations import zerodha_ledger
+
+from . import importer, matching, parse_ai, parse_table, rules, spending
+
+HDFC_CSV = """HDFC BANK Ltd.
+Statement of account
+Account No :XXXX1234
+
+Date,Narration,Chq./Ref.No.,Value Dt,Withdrawal Amt.,Deposit Amt.,Closing Balance
+01/10/26,UPI-TO ZERODHA BROKING LTD-ZERODHA@HDFC-123,0000123,01/10/26,"50,000.00",,"4,50,000.00"
+02/10/26,UPI-SWIGGY-SWIGGY@ICICI-456,0000456,02/10/26,650.00,,"4,49,350.00"
+03/10/26,NEFT CR-ACME CORP SALARY OCT,0000789,03/10/26,,"3,00,000.00","7,49,350.00"
+05/10/26,IMPS-TO PRITIKA SAVINGS,0000999,05/10/26,"1,00,000.00",,"6,49,350.00"
+06/10/26,ACH D- ETMONEY SIP-ICCL,0001000,06/10/26,"25,000.00",,"6,24,350.00"
+07/10/26,LIC PREMIUM PAYMENT,0001001,07/10/26,"12,000.00",,"6,12,350.00"
+08/10/26,CRED CLUB CARD BILL,0001002,08/10/26,"40,000.00",,"5,72,350.00"
+31/10/26,HOME LOAN EMI OCT,0001003,31/10/26,"70,000.00",,"5,02,350.00"
+**** End of statement ****
+"""
+
+CARD_CSV = """Transaction Date,Details,Amount (INR)
+04/10/2026,ZOMATO ONLINE ORDER,"1,200.00"
+09/10/2026,PAYMENT RECEIVED - THANK YOU,"40,000.00 Cr"
+12/10/2026,AMAZON PAY INDIA,"3,500.00"
+15/10/2026,AMAZON REFUND,"500.00 Cr"
+"""
+
+
+class Setup(TestCase):
+    def setUp(self):
+        self.s = Person.objects.create(name="Saurabh")
+        self.p = Person.objects.create(name="Pritika")
+        self.bank = Account.objects.create(owner=self.s, name="Bank HDFC", kind="bank", asset_class="cash")
+        self.pbank = Account.objects.create(owner=self.p, name="Bank ICICI", kind="bank", asset_class="cash")
+        self.card = Account.objects.create(owner=self.s, name="HDFC Regalia", kind="card", asset_class="liability")
+        self.zer = Account.objects.create(owner=self.s, name="Zerodha", institution="Zerodha", kind="broker")
+        self.mf = Account.objects.create(owner=self.s, name="ET Money", kind="mf")
+
+    def imp(self, account, name, text):
+        return importer.import_statement(account, name, text.encode(), client=NoClaude())
+
+
+class NoClaude:
+    """Fails loudly if anything tries to call Claude."""
+
+    def __getattr__(self, name):
+        raise AssertionError("Claude should not be called here")
+
+
+class TableParserTests(TestCase):
+    def test_bank_csv_with_preamble(self):
+        rows = parse_table.parse("hdfc.csv", HDFC_CSV.encode(), is_card=False)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(rows[0]["date"], dt.date(2026, 10, 1))
+        self.assertEqual(rows[0]["amount"], D("-50000.00"))
+        self.assertEqual(rows[2]["amount"], D("300000.00"))
+        self.assertEqual(rows[0]["balance"], D("450000.00"))
+
+    def test_card_csv_cr_suffix(self):
+        rows = parse_table.parse("card.csv", CARD_CSV.encode(), is_card=True)
+        self.assertEqual([r["amount"] for r in rows], [D("-1200"), D("40000"), D("-3500"), D("500")])
+
+    def test_xlsx(self):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Kotak statement"])
+        ws.append(["Transaction Date", "Description", "Debit", "Credit", "Balance"])
+        ws.append([dt.datetime(2026, 10, 3), "UPI ZEPTO", 800, None, 10000])
+        buf = io.BytesIO()
+        wb.save(buf)
+        rows = parse_table.parse("k.xlsx", buf.getvalue(), is_card=False)
+        self.assertEqual((rows[0]["date"], rows[0]["amount"]), (dt.date(2026, 10, 3), D("-800")))
+
+    def test_ambiguous_single_amount_bank(self):
+        with self.assertRaises(parse_table.TableParseError):
+            parse_table.parse("x.csv", b"Date,Narration,Amount\n01/10/26,THING,100\n", is_card=False)
+
+
+class RuleTests(Setup):
+    def test_import_categorises_with_rules(self):
+        stmt = self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        cats = {t.description[:20]: (t.category, t.spend_category, t.investment_account_id)
+                for t in stmt.transactions.all()}
+        self.assertEqual(cats["UPI-TO ZERODHA BROKI"], ("investment", "", self.zer.id))
+        self.assertEqual(cats["ACH D- ETMONEY SIP-I"], ("investment", "", self.mf.id))
+        self.assertEqual(cats["UPI-SWIGGY-SWIGGY@IC"], ("expense", "dining", None))
+        self.assertEqual(cats["NEFT CR-ACME CORP SA"][0], "income")
+        self.assertEqual(cats["IMPS-TO PRITIKA SAVI"][0], "transfer")      # family name
+        self.assertEqual(cats["LIC PREMIUM PAYMENT"][:2], ("expense", "insurance"))  # 'PREMIUM' isn't an EMI
+        self.assertEqual(cats["CRED CLUB CARD BILL"][0], "card_payment")
+        self.assertEqual(cats["HOME LOAN EMI OCT"][0], "loan_emi")
+
+    def test_subscription_is_not_investment(self):
+        rule = rules.match_rule(rules.ordered_rules(), "WEEKEND INVESTING SMALLCASE SUBSCRIPTION", D("-4999"), self.bank)
+        self.assertEqual((rule.category, rule.spend_category), ("expense", "subscriptions"))
+
+    def test_keyword_guess(self):
+        self.assertEqual(rules.keyword_guess("UPI/DR/412345678/SWIGGY/YESB/swiggy@yes"), "SWIGGY")
+
+
+class DedupeTests(Setup):
+    def test_same_file_rejected_and_overlap_skipped(self):
+        self.imp(self.bank, "a.csv", HDFC_CSV)
+        with self.assertRaises(importer.ImportError_):
+            self.imp(self.bank, "a.csv", HDFC_CSV)
+        overlap = HDFC_CSV.replace("**** End", "01/11/26,UPI-ZEPTO,0002000,01/11/26,300.00,,\"5,02,050.00\"\n**** End")
+        stmt = self.imp(self.bank, "b.csv", overlap)
+        self.assertEqual((stmt.added, stmt.duplicates), (1, 8))
+
+
+class MatchingTests(Setup):
+    def test_card_payment_pairs_with_card_statement(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        self.imp(self.card, "card.csv", CARD_CSV)
+        bank_side = Transaction.objects.get(description__startswith="CRED CLUB")
+        card_side = Transaction.objects.get(description__startswith="PAYMENT RECEIVED")
+        self.assertEqual(bank_side.matched_with, card_side)
+        self.assertEqual(card_side.category, "card_payment")
+
+    def test_transfer_between_spouses_pairs(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        self.imp(self.pbank, "icici.csv", "Date,Description,Debit,Credit\n05/10/2026,IMPS FROM S JOSHI,,100000\n")
+        incoming = Transaction.objects.get(account=self.pbank)
+        self.assertEqual((incoming.category, incoming.matched_with.account), ("transfer", self.bank))
+
+    def test_bank_investment_then_ledger_counts_once(self):
+        snap0 = Snapshot.objects.create(date=dt.date(2026, 9, 30))
+        Balance.objects.create(snapshot=snap0, account=self.zer, value=1000000)
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        t = Transaction.objects.get(description__contains="ZERODHA")
+        matching.confirm(t)
+        self.assertEqual(CashFlow.objects.get().source, "bank")
+        ledger = ("particulars,posting_date,cost_center,voucher_type,debit,credit,net_balance\n"
+                  "Funds added using UPI,2026-10-02,NSE-EQ,Bank Receipts,0,50000,50000\n")
+        zerodha_ledger.import_ledger(self.zer, ledger)
+        flows = list(CashFlow.objects.filter(account=self.zer))
+        self.assertEqual([(f.source, f.amount) for f in flows], [("kite", D("50000"))])
+        t.refresh_from_db()
+        self.assertEqual(t.cash_flow, flows[0])
+        snap1 = Snapshot.objects.create(date=dt.date(2026, 10, 31))
+        Balance.objects.create(snapshot=snap1, account=self.zer, value=1060000)
+        p = analytics.periods()[-1]
+        self.assertEqual((p.investments.invested, p.market_gain), (D("50000"), D("10000")))
+
+    def test_cas_purchases_sum_to_bank_debit(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        inst = Instrument.objects.create(identifier="F1", kind="mf")
+        CashFlow.objects.create(date=dt.date(2026, 10, 7), account=self.mf, amount=D("14999.25"), source="cas", instrument=inst, external_id="cas:a")
+        CashFlow.objects.create(date=dt.date(2026, 10, 7), account=self.mf, amount=D("9999.50"), source="cas", instrument=inst, external_id="cas:b")
+        t = Transaction.objects.get(description__contains="ETMONEY")
+        matching.confirm(t)  # 25,000 debit vs 24,998.75 of purchases (stamp duty)
+        self.assertFalse(CashFlow.objects.filter(source="bank").exists())
+        self.assertEqual(CashFlow.objects.filter(account=self.mf).count(), 2)
+
+    def test_recategorising_confirmed_investment_removes_flow(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        t = Transaction.objects.get(description__contains="ZERODHA")
+        matching.confirm(t)
+        t.category, t.investment_account = "transfer", None
+        matching.confirm(t)
+        self.assertFalse(CashFlow.objects.exists())
+
+
+class FakeStream:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return SimpleNamespace(stop_reason="end_turn", stop_details=None, model="m",
+                               content=[SimpleNamespace(type="text", text=json.dumps(self.payload))],
+                               usage=SimpleNamespace(input_tokens=1, output_tokens=1, cache_read_input_tokens=0,
+                                                     cache_creation_input_tokens=0))
+
+
+class FakeClaude:
+    """Returns queued payloads; records which model each call used."""
+
+    def __init__(self, *payloads):
+        self.payloads, self.models = list(payloads), []
+        outer = self
+
+        class M:
+            def stream(self, **kw):
+                outer.models.append(kw["model"])
+                return FakeStream(outer.payloads.pop(0))
+
+        self.messages = M()
+        self.beta = SimpleNamespace(messages=M())
+
+
+def extraction(total_debits):
+    return {"statement_type": "card", "period_start": "2026-10-01", "period_end": "2026-10-31",
+            "opening_balance": 0, "closing_balance": 0, "total_debits": total_debits, "total_credits": 0,
+            "transactions": [
+                {"date": "2026-10-04", "description": "BLUE TOKAI COFFEE", "amount": 450, "direction": "debit",
+                 "balance": 0, "category": "expense", "spend_category": "dining"},
+                {"date": "2026-10-05", "description": "SOME NEW SHOP", "amount": 1550, "direction": "debit",
+                 "balance": 0, "category": "expense", "spend_category": "shopping"},
+            ]}
+
+
+def blank_pdf(password=None):
+    from pypdf import PdfWriter
+    w = PdfWriter()
+    w.add_blank_page(200, 200)
+    if password:
+        w.encrypt(password)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+class PdfTests(Setup):
+    def test_pdf_read_by_claude_with_retry_on_mismatch(self):
+        client = FakeClaude(extraction(9999), extraction(2000))  # first read doesn't reconcile
+        stmt = importer.import_statement(self.card, "card.pdf", blank_pdf("secret"), "secret", client=client)
+        self.assertEqual(client.models, ["claude-haiku-5-5", "claude-sonnet-5-5"])
+        self.assertEqual((stmt.added, stmt.parser, stmt.warning), (2, "claude", ""))
+        t = stmt.transactions.get(description="BLUE TOKAI COFFEE")
+        self.assertEqual((t.amount, t.category, t.spend_category, t.source), (D("-450"), "expense", "dining", "ai"))
+        self.assertEqual(stmt.period_start, dt.date(2026, 10, 1))
+
+    def test_wrong_pdf_password(self):
+        with self.assertRaises(ValueError):
+            parse_ai.decrypt_pdf(blank_pdf("secret"), "nope")
+
+    def test_uncategorised_rows_go_to_claude(self):
+        client = FakeClaude({"items": [{"i": 0, "category": "expense", "spend_category": "household"}]})
+        stmt = importer.import_statement(self.bank, "x.csv",
+                                         b"Date,Narration,Debit,Credit\n01/10/26,RAMESH HOUSEHELP,8000,\n", client=client)
+        t = stmt.transactions.get()
+        self.assertEqual((t.category, t.spend_category, t.source), ("expense", "household", "ai"))
+
+
+class SpendingTests(Setup):
+    def test_monthly_spending_and_adopt(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        self.imp(self.card, "card.csv", CARD_CSV)
+        for st in StatementUpload.objects.all():  # both statements cover all of October
+            st.period_start, st.period_end = dt.date(2026, 10, 1), dt.date(2026, 10, 31)
+            st.save()
+        rows = spending.monthly()
+        oct_ = rows[-1]
+        # bank: swiggy 650 + LIC 12000; card: zomato 1200 + amazon 3500 - refund 500
+        self.assertEqual(oct_["spend"], D("16850"))
+        self.assertEqual(oct_["emi"], D("70000"))
+        self.assertTrue(oct_["complete"])
+        MonthlyExpense.objects.create(month=dt.date(2026, 1, 1), amount=200000, includes_emi=True)
+        s = spending.suggestion(rows)
+        self.assertEqual(s["amount"], D("86850"))
+        spending.adopt(s["amount"], s["include_emi"])
+        self.assertEqual(MonthlyExpense.objects.order_by("-month").first().amount, D("86850"))
+
+    def test_incomplete_month_flagged(self):
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)  # covers 1-31 Oct from dates
+        self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n20/10/2026,UBER,300\n")
+        rows = spending.monthly()
+        self.assertFalse(rows[-1]["complete"])
+        self.assertEqual([a.name for a in rows[-1]["missing"]], ["HDFC Regalia"])
+        self.assertIsNone(spending.suggestion(rows))
+
+
+class PageTests(Setup):
+    def setUp(self):
+        super().setUp()
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+
+    def test_upload_review_remember_confirm(self):
+        f = SimpleUploadedFile("hdfc.csv", HDFC_CSV.replace("SWIGGY-SWIGGY@ICICI", "BLUETOKAI-BT@ICICI").encode())
+        r = self.client.post("/statements/upload/", {"account": self.bank.id, "files": [f]})
+        self.assertRedirects(r, "/statements/review/")
+        page = self.client.get("/statements/review/")
+        self.assertContains(page, "BLUETOKAI")
+        t = Transaction.objects.get(description__contains="BLUETOKAI")
+        # BLUETOKAI isn't a known merchant: with Claude unavailable it's left for us to tag
+        self.assertEqual(t.category, "")
+        post = {"txn": [t.id], f"cat_{t.id}": "expense", f"spend_{t.id}": "dining",
+                f"rem_{t.id}": "on", f"kw_{t.id}": "BLUETOKAI", f"ok_{t.id}": "on"}
+        self.client.post("/statements/review/save/", post)
+        t.refresh_from_db()
+        self.assertEqual((t.category, t.spend_category, t.confirmed, t.source), ("expense", "dining", True, "user"))
+        self.assertTrue(CategoryRule.objects.filter(keyword="BLUETOKAI", is_builtin=False).exists())
+        self.assertContains(self.client.get("/statements/"), "BLUETOKAI")
+        self.assertEqual(self.client.get("/spending/").status_code, 200)
+
+    def test_month_end_form_prefills_bank_balance(self):
+        from core.views import _values_from_pulls
+        self.imp(self.bank, "hdfc.csv", HDFC_CSV)
+        vals = _values_from_pulls([self.bank], dt.date(2026, 11, 2))
+        self.assertEqual(vals[self.bank.id], D("502350.00"))
+        self.assertEqual(_values_from_pulls([self.bank], dt.date(2026, 12, 31)), {})  # too old

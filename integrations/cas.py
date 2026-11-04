@@ -102,6 +102,8 @@ def import_cas(data, account):
                 pos.save()
         pull.total_value = sum(p[4] for p in positions)
         pull.save(update_fields=["total_value"])
+    from statements.matching import reconcile
+    reconcile(account)  # drop bank-statement rows that duplicate these purchases
     return pull, created, skipped
 
 

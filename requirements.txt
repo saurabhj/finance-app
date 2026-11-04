@@ -36,6 +36,7 @@ pydantic==2.14.2
 pydantic_core==2.50.2
 Pygments==2.21.0
 pyOpenSSL==26.4.0
+pypdf==6.21.4
 pypdfium2==5.14.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.4
@@ -52,4 +53,5 @@ txaio==26.6.1
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.8.0
+xlrd==2.0.2
 zope.interface==8.7

@@ -72,4 +72,6 @@ def import_ledger(account, text):
         )
         created += made
         skipped += not made
+    from statements.matching import reconcile
+    reconcile(account)  # drop bank-statement rows that duplicate these pay-ins
     return created, skipped

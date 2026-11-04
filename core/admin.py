@@ -30,3 +30,17 @@ class CashFlowAdmin(admin.ModelAdmin):
 class BalanceAdmin(admin.ModelAdmin):
     list_display = ["snapshot", "account", "value"]
     list_filter = ["account"]
+
+
+@admin.register(models.CategoryRule)
+class CategoryRuleAdmin(admin.ModelAdmin):
+    list_display = ["keyword", "applies_to", "direction", "category", "spend_category", "target", "target_account", "is_builtin", "hits"]
+    list_filter = ["is_builtin", "category"]
+    search_fields = ["keyword"]
+
+
+@admin.register(models.Transaction)
+class TransactionAdmin(admin.ModelAdmin):
+    list_display = ["date", "account", "description", "amount", "category", "spend_category", "confirmed"]
+    list_filter = ["account", "category", "confirmed"]
+    search_fields = ["description"]

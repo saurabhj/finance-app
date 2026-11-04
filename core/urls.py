@@ -37,3 +37,17 @@ urlpatterns += [
     path("recommendations/<int:pk>/", ai_views.recommendation_update, name="recommendation_update"),
     path("ask/", ai_views.ask, name="ask"),
 ]
+
+from statements import views as st_views  # noqa: E402
+
+urlpatterns += [
+    path("statements/", st_views.home, name="statements"),
+    path("statements/upload/", st_views.upload, name="statement_upload"),
+    path("statements/accounts/", st_views.add_account, name="statement_add_account"),
+    path("statements/<int:pk>/delete/", st_views.delete_upload, name="statement_delete"),
+    path("statements/rules/<int:pk>/delete/", st_views.delete_rule, name="rule_delete"),
+    path("statements/review/", st_views.review, name="statements_review"),
+    path("statements/review/save/", st_views.review_save, name="statements_review_save"),
+    path("spending/", st_views.spending_view, name="spending"),
+    path("spending/adopt/", st_views.spending_adopt, name="spending_adopt"),
+]

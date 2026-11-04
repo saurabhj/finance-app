@@ -85,7 +85,7 @@ def _net_worth(periods):
         "total": _r(latest.net_worth),
         "by_person": {k: _r(v) for k, v in latest.by_person.items()},
         "recent_periods": recent,
-        "investments_xirr_tracked": _r(analytics.xirr_for(Account.objects.exclude(kind__in=["bank", "loan"])), 4),
+        "investments_xirr_tracked": _r(analytics.xirr_for(Account.investment_accounts()), 4),
     }
 
 
@@ -159,7 +159,7 @@ def _holdings(snap, total_assets, fetch_history):
     first_buy = dict(CashFlow.objects.filter(instrument__isnull=False, amount__gt=0)
                      .values("instrument_id").annotate(d=Min("date")).values_list("instrument_id", "d"))
     accounts_with_pulls = 0
-    for acc in Account.objects.filter(is_active=True).exclude(kind__in=["bank", "loan"]).select_related("owner"):
+    for acc in Account.investment_accounts().filter(is_active=True).select_related("owner"):
         bal = snap.balances.filter(account=acc).first()
         pull = (bal.pull if bal and bal.pull else None) or acc.pulls.first()
         if not pull:

@@ -36,6 +36,9 @@ class Account(models.Model):
         ULIP = "ulip", "ULIP / insurance"
         OTHER = "other", "Other investment"
         LOAN = "loan", "Loan"
+        CARD = "card", "Credit card"
+
+    NON_INVESTMENT_KINDS = ("bank", "loan", "card")
 
     owner = models.ForeignKey(Person, on_delete=models.PROTECT, related_name="accounts")
     name = models.CharField(max_length=80)
@@ -66,11 +69,15 @@ class Account(models.Model):
 
     @property
     def is_investment(self):
-        return self.kind not in (self.Kind.BANK, self.Kind.LOAN)
+        return self.kind not in self.NON_INVESTMENT_KINDS
 
     @property
     def is_liability(self):
-        return self.kind == self.Kind.LOAN
+        return self.kind in (self.Kind.LOAN, self.Kind.CARD)
+
+    @classmethod
+    def investment_accounts(cls):
+        return cls.objects.exclude(kind__in=cls.NON_INVESTMENT_KINDS)
 
 
 class Snapshot(models.Model):
@@ -130,6 +137,7 @@ class CashFlow(models.Model):
         MANUAL = "manual", "Manual"
         KITE = "kite", "Zerodha ledger"
         CAS = "cas", "CAS statement"
+        BANK = "bank", "Bank statement"
 
     date = models.DateField()
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="cash_flows")
@@ -338,3 +346,109 @@ class Recommendation(models.Model):
     urgency = models.CharField(max_length=10, default="normal")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
     status_note = models.CharField(max_length=200, blank=True)
+
+
+# ------------------------------------------------------------------ statements
+
+class Category(models.TextChoices):
+    INVESTMENT = "investment", "Investment (money in)"
+    INVESTMENT_RETURN = "inv_return", "Investment payout (money out)"
+    TRANSFER = "transfer", "Transfer between our accounts"
+    CARD_PAYMENT = "card_payment", "Credit card bill payment"
+    LOAN_EMI = "loan_emi", "Loan EMI"
+    INCOME = "income", "Income (salary, interest…)"
+    EXPENSE = "expense", "Spending"
+    REFUND = "refund", "Refund / cashback"
+    IGNORE = "ignore", "Ignore"
+
+
+class SpendCategory(models.TextChoices):
+    GROCERIES = "groceries", "Groceries"
+    DINING = "dining", "Dining & food delivery"
+    SHOPPING = "shopping", "Shopping"
+    TRAVEL = "travel", "Travel"
+    TRANSPORT = "transport", "Fuel & transport"
+    UTILITIES = "utilities", "Utilities & bills"
+    HOUSEHOLD = "household", "Rent, help & household"
+    HEALTH = "health", "Health"
+    EDUCATION = "education", "Education"
+    ENTERTAINMENT = "entertainment", "Entertainment"
+    SUBSCRIPTIONS = "subscriptions", "Subscriptions"
+    INSURANCE = "insurance", "Insurance"
+    TAXES = "taxes", "Taxes"
+    GIFTS = "gifts", "Gifts & donations"
+    OTHER = "other", "Other"
+
+
+class StatementUpload(models.Model):
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="statements")
+    filename = models.CharField(max_length=200)
+    sha256 = models.CharField(max_length=64)
+    parser = models.CharField(max_length=20)  # table / claude
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    added = models.PositiveIntegerField(default=0)
+    duplicates = models.PositiveIntegerField(default=0)
+    warning = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+
+
+class CategoryRule(models.Model):
+    """Description keyword -> category. User rules win over built-in ones."""
+
+    class Target(models.TextChoices):
+        NONE = "", "—"
+        ZERODHA = "zerodha", "Zerodha account of the statement owner"
+        MF = "mf", "Mutual fund account of the statement owner"
+        FD = "fd", "FD account of the statement owner"
+
+    keyword = models.CharField(max_length=100, help_text="Case-insensitive text found in the description")
+    applies_to = models.CharField(max_length=10, choices=[("any", "Any"), ("bank", "Bank"), ("card", "Card")], default="any")
+    direction = models.CharField(max_length=10, choices=[("any", "Any"), ("debit", "Money out"), ("credit", "Money in")], default="any")
+    category = models.CharField(max_length=20, choices=Category.choices)
+    spend_category = models.CharField(max_length=20, choices=SpendCategory.choices, blank=True)
+    target = models.CharField(max_length=10, choices=Target.choices, blank=True)
+    target_account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.CASCADE, related_name="+")
+    is_builtin = models.BooleanField(default=False)
+    hits = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["is_builtin", "-id"]
+
+    def __str__(self):
+        return f"{self.keyword} → {self.get_category_display()}"
+
+
+class Transaction(models.Model):
+    class Source(models.TextChoices):
+        RULE = "rule", "Rule"
+        AI = "ai", "Claude guess"
+        MATCH = "match", "Matched"
+        USER = "user", "You"
+
+    statement = models.ForeignKey(StatementUpload, on_delete=models.CASCADE, related_name="transactions")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="transactions")
+    date = models.DateField()
+    description = models.CharField(max_length=300)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, help_text="+ money in, − money out")
+    balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    category = models.CharField(max_length=20, choices=Category.choices, blank=True)
+    spend_category = models.CharField(max_length=20, choices=SpendCategory.choices, blank=True)
+    investment_account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    source = models.CharField(max_length=10, choices=Source.choices, blank=True)
+    rule = models.ForeignKey(CategoryRule, null=True, blank=True, on_delete=models.SET_NULL)
+    confirmed = models.BooleanField(default=False)
+    cash_flow = models.ForeignKey(CashFlow, null=True, blank=True, on_delete=models.SET_NULL, related_name="bank_transactions")
+    matched_with = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                     help_text="The other side of a transfer between our accounts")
+    dedupe_key = models.CharField(max_length=64, unique=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-date", "id"]
+
+    def __str__(self):
+        return f"{self.date} {self.description[:40]} {self.amount}"

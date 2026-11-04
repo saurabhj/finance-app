@@ -57,7 +57,7 @@ def dashboard(request):
 
 @login_required
 def snapshot_entry(request, date=None):
-    accounts = Account.objects.filter(is_active=True).select_related("owner")
+    accounts = Account.objects.filter(is_active=True).exclude(kind=Account.Kind.CARD).select_related("owner")
     snap = get_object_or_404(Snapshot, date=date) if date else None
     if snap:
         values = dict(snap.balances.values_list("account_id", "value"))
@@ -108,6 +108,11 @@ def _values_from_pulls(accounts, date):
             pull = _latest_pull(acc, date, 60)
             if pull:
                 out[acc.id] = pull.current_value()
+        elif acc.kind == Account.Kind.BANK:
+            txn = (acc.transactions.filter(balance__isnull=False, date__lte=date,
+                                           date__gte=date - dt.timedelta(days=10)).order_by("-date", "-id").first())
+            if txn:
+                out[acc.id] = txn.balance
     return out
 
 
@@ -191,7 +196,7 @@ from .models import Instrument, Person  # noqa: E402
 
 @login_required
 def holdings(request):
-    accounts = Account.objects.filter(is_active=True).exclude(kind__in=["bank", "loan"]).select_related("owner")
+    accounts = Account.investment_accounts().filter(is_active=True).select_related("owner")
     blocks = []
     for acc in accounts:
         pull = acc.pulls.first()
@@ -210,7 +215,7 @@ def holdings(request):
         "management_choices": Instrument.Management.choices,
         "nav_date": Instrument.objects.filter(kind="mf").exclude(last_price_date=None)
                     .order_by("-last_price_date").values_list("last_price_date", flat=True).first(),
-        "family_xirr": analytics.xirr_for(Account.objects.exclude(kind__in=["bank", "loan"])),
+        "family_xirr": analytics.xirr_for(Account.investment_accounts()),
     }
     return render(request, "core/holdings.html", ctx)
 

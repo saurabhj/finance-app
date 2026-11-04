@@ -67,7 +67,7 @@ class CashFlowForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         accounts = Account.objects.filter(is_active=True).select_related("owner")
-        self.fields["account"].queryset = accounts.exclude(kind__in=["bank", "loan"])
+        self.fields["account"].queryset = accounts.exclude(kind__in=Account.NON_INVESTMENT_KINDS)
         self.fields["from_account"].queryset = accounts
         for f in self.fields.values():
             css = "form-select" if isinstance(f.widget, forms.Select) else "form-control"

@@ -22,6 +22,15 @@ python3 manage.py runserver 0.0.0.0:8765
 3. **Holdings → upload the CAS PDF** from mfcentral.com. This brings in MF holdings plus every SIP and redemption.
 4. **Month-end entry**: Zerodha and MF values and "invested" amounts come pre-filled. Type the bank and FD balances and save.
 
+## Bank & credit-card statements
+**Statements** page: upload CSV, Excel or (password-protected) PDF statements for any bank account or card. Add cards there first.
+- CSV/Excel is parsed on the Mac. PDFs (and odd exports) are read by Claude (`claude-haiku-5-5`), checked against the statement's printed totals, and re-read with `claude-sonnet-5-5` if they don't reconcile.
+- Built-in keyword rules catch TO ZERODHA, ET MONEY / ICCL, FD bookings, card bill payments (CRED, "payment received"), home-loan EMIs, salary, interest and common merchants. Claude guesses the rest.
+- Transfers between your own or each other's accounts, and card payments vs. card statements, are paired automatically so they aren't counted as spending.
+- **Review** page: fix guesses, tick *remember* to teach a rule, confirm. Confirmed investments become "money invested" and are de-duplicated against the Zerodha ledger and CAS entries.
+- Bank closing balances pre-fill the month-end form.
+- **Spending** page: monthly spending by category and EMI, coverage warnings for months missing a statement, and a 3-month average you can adopt in the Plan with one click.
+
 ## Financial independence
 Fill in the **Plan** page: rough monthly expenses, income and hours worked, the home loan, and optionally target allocation. The **Financial independence** page then shows:
 - **FI target**: core expenses (excluding EMI) × 12 ÷ safe withdrawal rate, plus the loan outstanding (the loan is paid off at FI, not carried forever).

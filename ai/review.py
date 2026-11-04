@@ -37,21 +37,30 @@ def user_message(cadence, ctx, question=None):
     return f"{head}\n\n<finance_snapshot>\n{snapshot}\n</finance_snapshot>"
 
 
-def call_claude(model, text, schema, effort, client=None):
-    """One structured-output call. Returns (parsed_json, usage_dict, served_model)."""
-    client = client or anthropic.Anthropic()
+def call_claude(model, content, schema, effort, client=None, system=None, max_tokens=64000):
+    """One structured-output call. `content` is a string or a list of content blocks.
+    Returns (parsed_json, usage_dict, served_model)."""
+    if client is None:
+        import os
+        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+            raise ReviewError("Anthropic API key missing: set ANTHROPIC_API_KEY in .env and restart the app.")
+        client = anthropic.Anthropic()
+    kwargs = dict(
+        model=model,
+        max_tokens=max_tokens,
+        system=[{"type": "text", "text": system or SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        thinking={"type": "adaptive"},
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+        messages=[{"role": "user", "content": content}],
+    )
     try:
-        with client.beta.messages.stream(
-            model=model,
-            max_tokens=64000,
-            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-            thinking={"type": "adaptive"},
-            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+        if "haiku" in model:  # Haiku has no server-side refusal fallback
+            stream_ctx = client.messages.stream(**kwargs)
+        else:
             # On a safety decline, the API retries on a suitable fallback model instead of failing.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            messages=[{"role": "user", "content": text}],
-        ) as stream:
+            stream_ctx = client.beta.messages.stream(**kwargs, betas=["server-side-fallback-2026-07-01"],
+                                                     fallbacks="default")
+        with stream_ctx as stream:
             msg = stream.get_final_message()
     except anthropic.AuthenticationError as e:
         raise ReviewError("Anthropic API key missing or invalid: set ANTHROPIC_API_KEY in .env") from e

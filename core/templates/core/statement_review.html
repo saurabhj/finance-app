@@ -1,0 +1,62 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block head %}<style>.rv td { vertical-align: middle; font-size: .85rem; } .rv select { min-width: 9rem; } .rv .desc { max-width: 320px; }</style>{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-baseline mb-2">
+  <h4 class="mb-0">Review transactions</h4>
+  <a href="{% url 'statements' %}" class="small">Upload more</a>
+</div>
+<form method="get" class="d-flex gap-2 mb-3">
+  <select name="status" class="form-select form-select-sm w-auto"><option value="unconfirmed" {% if status == "unconfirmed" %}selected{% endif %}>Unconfirmed</option><option value="all" {% if status == "all" %}selected{% endif %}>All</option></select>
+  <select name="account" class="form-select form-select-sm w-auto"><option value="">All accounts</option>{% for a in accounts %}<option value="{{ a.id }}" {% if filter_account == a.id|stringformat:"s" %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+  <select name="category" class="form-select form-select-sm w-auto"><option value="all">All categories</option><option value="" {% if filter_category == "" %}selected{% endif %}>Uncategorised</option>{% for v, l in categories %}<option value="{{ v }}" {% if filter_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <button class="btn btn-sm btn-outline-secondary">Filter</button>
+</form>
+<p class="small text-muted">Check the guesses, fix any that are wrong, then <strong>Confirm</strong>. Confirmed investments become "money invested" in the app (matched to the Zerodha ledger / CAS so they're not counted twice). Tick <em>remember</em> to turn a correction into a rule; it applies to the other unconfirmed rows straight away.</p>
+<form method="post" action="{% url 'statements_review_save' %}">{% csrf_token %}
+<input type="hidden" name="next" value="{{ request.get_full_path }}">
+<div class="card"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-sm rv mb-0">
+  <thead><tr><th><input type="checkbox" id="all" checked title="Select all"></th><th>Date</th><th>Account</th><th>Description</th><th class="num">Amount</th><th>Category</th><th>Spend type / investment account</th><th>Guess by</th><th>Remember as</th></tr></thead>
+  {% for t in page %}
+  <tr {% if not t.category %}class="table-warning"{% elif t.confirmed %}class="table-light"{% endif %}>
+    <td><input type="hidden" name="txn" value="{{ t.id }}">{% if not t.confirmed %}<input type="checkbox" name="ok_{{ t.id }}" class="ok" checked>{% else %}✓{% endif %}</td>
+    <td class="text-nowrap">{{ t.date|date:"j M y" }}</td>
+    <td class="small">{{ t.account.name }}</td>
+    <td class="desc">{{ t.description|truncatechars:70 }}{% if t.matched_with %}<div class="small text-muted">↔ {{ t.matched_with.account }}</div>{% endif %}</td>
+    <td class="num {{ t.amount|tone }}">{{ t.amount|inr_signed }}</td>
+    <td><select name="cat_{{ t.id }}" class="form-select form-select-sm cat">
+      <option value="" {% if not t.category %}selected{% endif %}>— choose —</option>
+      {% for v, l in categories %}<option value="{{ v }}" {% if t.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select></td>
+    <td>
+      <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" %}hidden{% endif %}>
+        {% for v, l in spend_categories %}<option value="{{ v }}" {% if t.spend_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+      <select name="inv_{{ t.id }}" class="form-select form-select-sm inv" {% if t.category != "investment" and t.category != "inv_return" %}hidden{% endif %}>
+        <option value="">— which account? —</option>
+        {% for a in investment_accounts %}<option value="{{ a.id }}" {% if t.investment_account_id == a.id %}selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="small text-muted">{{ t.get_source_display }}</td>
+    <td class="text-nowrap"><input type="checkbox" name="rem_{{ t.id }}"> <input name="kw_{{ t.id }}" value="{{ t.keyword_guess }}" class="form-control form-control-sm d-inline-block" style="width: 8rem"></td>
+  </tr>
+  {% empty %}<tr><td colspan="9" class="text-muted p-3">Nothing to review.</td></tr>{% endfor %}
+</table>
+</div></div></div>
+{% if page.object_list %}<button class="btn btn-primary mt-3">Save &amp; confirm ticked</button>{% endif %}
+{% if page.has_other_pages %}<span class="ms-3 small">Page {{ page.number }} of {{ page.paginator.num_pages }}
+  {% if page.has_previous %}<a href="?status={{ status }}&account={{ filter_account }}&page={{ page.previous_page_number }}">‹ prev</a>{% endif %}
+  {% if page.has_next %}<a href="?status={{ status }}&account={{ filter_account }}&page={{ page.next_page_number }}">next ›</a>{% endif %}</span>{% endif %}
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('all')?.addEventListener('change', e => document.querySelectorAll('.ok').forEach(c => c.checked = e.target.checked));
+document.querySelectorAll('select.cat').forEach(sel => sel.addEventListener('change', () => {
+  const row = sel.closest('tr');
+  row.querySelector('.spend').hidden = sel.value !== 'expense';
+  row.querySelector('.inv').hidden = !['investment', 'inv_return'].includes(sel.value);
+}));
+</script>
+{% endblock %}

@@ -155,3 +155,5 @@ LOGOUT_REDIRECT_URL = "login"
 # AI models
 AI_MODEL_DEEP = os.environ.get("AI_MODEL_DEEP", "claude-opus-5-5")
 AI_MODEL_LIGHT = os.environ.get("AI_MODEL_LIGHT", "claude-sonnet-5-5")
+# Reading statements and guessing categories (cheap); re-read with AI_MODEL_LIGHT if totals don't reconcile
+AI_MODEL_EXTRACT = os.environ.get("AI_MODEL_EXTRACT", "claude-haiku-5-5")
