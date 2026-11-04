@@ -108,6 +108,12 @@ def _values_from_pulls(accounts, date):
             pull = _latest_pull(acc, date, 60)
             if pull:
                 out[acc.id] = pull.current_value()
+        elif acc.kind in (Account.Kind.FD, Account.Kind.OTHER):
+            # deposits don't move with markets: last value + money put in/taken out since
+            last = Balance.objects.filter(account=acc, snapshot__date__lt=date).order_by("-snapshot__date").first()
+            if last:
+                flows = CashFlow.objects.filter(account=acc, date__gt=last.snapshot.date, date__lte=date)
+                out[acc.id] = last.value + (flows.aggregate(t=Sum("amount"))["t"] or 0)
         elif acc.kind == Account.Kind.BANK:
             txn = (acc.transactions.filter(balance__isnull=False, date__lte=date,
                                            date__gte=date - dt.timedelta(days=10)).order_by("-date", "-id").first())

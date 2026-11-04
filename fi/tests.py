@@ -69,6 +69,18 @@ class EngineTests(TestCase):
         self.assertEqual(engine.life_energy_hours(150000, 2000), 75)
 
 
+class MultiLoanTests(TestCase):
+    def test_two_loans_amortise_separately_and_free_emis(self):
+        i = inputs(investments={}, bank_cash=0, monthly_investment=0, inflation=0, emergency_months=0,
+                   loan_outstanding=2e5, emi=3e4, loans=[{"outstanding": 1e5, "emi": 2e4, "rate": 0.0},
+                                                         {"outstanding": 1e5, "emi": 1e4, "rate": 0.0}])
+        s = engine.project(i, annual_return=0, years=2)["series"]
+        # first loan cleared by month 5 (2e4 freed for 7 months), second by month 10 (1e4 freed for 2)
+        self.assertEqual(s[1]["loan"], 0)
+        self.assertEqual(s[1]["corpus"], 7 * 2e4 + 2 * 1e4)
+        self.assertEqual(i.fi_target, i.core_expenses * 12 / i.swr + 2e5)
+
+
 class LoanBackfillTests(TestCase):
     def test_backward_amortisation_round_trips(self):
         past = services.estimate_past_outstanding(D("5000000"), D("60000"), D("0.085"),
@@ -94,7 +106,7 @@ class PlanPageTests(TestCase):
              "monthly_net_income": "600000", "hours_worked_per_month": "220", "work_costs_monthly": "40000",
              "planned_monthly_investment": "150000", "safe_withdrawal_rate": "3.33", "inflation": "6",
              "emergency_fund_months": "12", "target_fi_date": "2030-12-31",
-             "loan_owner": self.p.id, "loan_outstanding": "5000000", "loan_emi": "60000", "loan_rate": "8.5",
+             "loan_name": "Home loan", "loan_owner": self.p.id, "loan_outstanding": "5000000", "loan_emi": "60000", "loan_rate": "8.5",
              "loan_end_date": "2035-01-01", "loan_backfill": "on",
              "target_equity": "70", "target_gold": "10", "target_debt": "15", "target_cash": "5", "target_hybrid": "",
              "band_equity": "5", "return_equity": "11"}
@@ -131,8 +143,11 @@ class PlanPageTests(TestCase):
 
     def test_rerunning_backfill_does_not_overwrite(self):
         self.client.post("/plan/", self.form())
-        self.client.post("/plan/", self.form(loan_outstanding="4900000"))
         loan = Account.objects.get(kind="loan")
+        k = f"loan{loan.id}_"
+        self.client.post("/plan/", self.form(loan_outstanding="", loan_name="", **{
+            k + "outstanding": "4900000", k + "emi": "60000", k + "rate": "8.5", k + "end": "2035-01-01"}))
+        self.assertEqual(Account.objects.filter(kind="loan").count(), 1)
         self.assertEqual(Balance.objects.filter(account=loan).count(), 3)
         self.assertEqual(Balance.objects.get(account=loan, snapshot__date=dt.date(2026, 11, 4)).value, D("4900000"))
 

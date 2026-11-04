@@ -285,6 +285,10 @@ class Household(models.Model):
         max_digits=12, decimal_places=2, default=0,
         help_text="Used for projections until there are 3 tracked months of actual investing.",
     )
+    categorization_notes = models.TextField(
+        blank=True,
+        help_text="Plain-English instructions Claude follows when reading and categorising statements.",
+    )
     expected_returns = models.JSONField(
         default=dict, blank=True,
         help_text='Annual nominal return per asset class, e.g. {"equity": 0.11}. Blank = conservative defaults.',

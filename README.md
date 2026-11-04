@@ -27,12 +27,13 @@ python3 manage.py runserver 0.0.0.0:8765
 - CSV/Excel is parsed on the Mac. PDFs (and odd exports) are read by Claude (`claude-haiku-5-5`), checked against the statement's printed totals, and re-read with `claude-sonnet-5-5` if they don't reconcile.
 - Built-in keyword rules catch TO ZERODHA, ET MONEY / ICCL, FD bookings, card bill payments (CRED, "payment received"), home-loan EMIs, salary, interest and common merchants. Claude guesses the rest.
 - Transfers between your own or each other's accounts, and card payments vs. card statements, are paired automatically so they aren't counted as spending.
+- **Rules & notes**: add keyword rules directly (bank/card, money in/out, category, account), and write plain-English *notes for Claude*, which it follows whenever it reads statements, guesses categories or runs a review.
 - **Review** page: fix guesses, tick *remember* to teach a rule, confirm. Confirmed investments become "money invested" and are de-duplicated against the Zerodha ledger and CAS entries.
 - Bank closing balances pre-fill the month-end form.
 - **Spending** page: monthly spending by category and EMI, coverage warnings for months missing a statement, and a 3-month average you can adopt in the Plan with one click.
 
 ## Financial independence
-Fill in the **Plan** page: rough monthly expenses, income and hours worked, the home loan, and optionally target allocation. The **Financial independence** page then shows:
+Fill in the **Plan** page: rough monthly expenses, income and hours worked, every loan (home, car…), and optionally target allocation. The **Financial independence** page then shows:
 - **FI target**: core expenses (excluding EMI) × 12 ÷ safe withdrawal rate, plus the loan outstanding (the loan is paid off at FI, not carried forever).
 - **Corpus**: investments + bank cash above the emergency fund.
 - **The wall chart**: safe monthly income vs. core spending over time, and the projected **crossover** month.

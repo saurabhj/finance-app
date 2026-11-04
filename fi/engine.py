@@ -1,9 +1,9 @@
 """Financial independence maths, following *Your Money or Your Life* (YMOYL).
 
 Definitions used throughout:
-- core expenses: monthly spending excluding the home-loan EMI (the loan is
-  treated as something to clear, not a forever expense).
-- FI target: core expenses × 12 ÷ SWR  +  loan outstanding.
+- core expenses: monthly spending excluding loan EMIs (loans are treated as
+  something to clear, not a forever expense).
+- FI target: core expenses × 12 ÷ SWR  +  loans outstanding.
 - corpus: investments + bank cash above the emergency fund.
 - safe monthly income: (corpus − loan outstanding) × SWR ÷ 12.
 - crossover (YMOYL's wall chart): the month safe income ≥ core expenses.
@@ -34,6 +34,15 @@ class FiInputs:
     inflation: float = 0.06
     emergency_months: int = 12
     returns: dict = field(default_factory=dict)
+    loans: list = field(default_factory=list)  # [{"outstanding", "emi", "rate"}]; else the single-loan fields
+
+    @property
+    def loan_list(self):
+        if self.loans:
+            return self.loans
+        if self.loan_outstanding:
+            return [{"outstanding": self.loan_outstanding, "emi": self.emi, "rate": self.loan_rate}]
+        return []
 
     # ---- derived
     @property
@@ -100,7 +109,8 @@ def project(inp: FiInputs, annual_return=None, years=HORIZON_YEARS):
     r = annual_return if annual_return is not None else inp.blended_return
     r_m = (1 + r) ** (1 / 12) - 1
     i_m = (1 + inp.inflation) ** (1 / 12) - 1
-    corpus, loan = inp.corpus, inp.loan_outstanding
+    loans = [dict(l) for l in inp.loan_list]
+    corpus, loan = inp.corpus, sum(l["outstanding"] for l in loans)
     expenses, contrib = inp.core_expenses, inp.monthly_investment
     crossover = None
     series = []
@@ -111,13 +121,15 @@ def project(inp: FiInputs, annual_return=None, years=HORIZON_YEARS):
         if t % 12 == 0:
             series.append({"year": inp.as_of.year + t // 12, "corpus": corpus, "loan": loan,
                            "safe_income": income, "expenses": expenses})
-        # step one month
+        # step one month: pay each loan; once a loan is gone its EMI becomes investable
         freed_emi = 0.0
-        if loan > 0:
-            if inp.emi:
-                loan = max(loan * (1 + inp.loan_rate / 12) - inp.emi, 0.0)
-        else:
-            freed_emi = inp.emi  # once the loan is gone the EMI becomes investable
+        for l in loans:
+            if l["outstanding"] > 0:
+                if l["emi"]:
+                    l["outstanding"] = max(l["outstanding"] * (1 + l["rate"] / 12) - l["emi"], 0.0)
+            else:
+                freed_emi += l["emi"]
+        loan = sum(l["outstanding"] for l in loans)
         corpus = corpus * (1 + r_m) + contrib + freed_emi
         expenses *= 1 + i_m
         contrib *= 1 + i_m
@@ -136,14 +148,18 @@ def monte_carlo(inp: FiInputs, runs=2000, years=HORIZON_YEARS, seed=42):
     mu, sigma = inp.blended_return, inp.blended_volatility
     paths, crossed_at = [], []
     for _ in range(runs):
-        corpus, loan, expenses, contrib = inp.corpus, inp.loan_outstanding, inp.core_expenses, inp.monthly_investment
+        loans = [dict(l) for l in inp.loan_list]
+        corpus, expenses, contrib = inp.corpus, inp.core_expenses, inp.monthly_investment
+        loan = sum(l["outstanding"] for l in loans)
         path, hit = [corpus], 0 if corpus - loan >= expenses * 12 / inp.swr else None
         for y in range(1, years + 1):
             ret = rng.gauss(mu, sigma)
-            extra = inp.emi * 12 if loan == 0 else 0.0
-            if loan > 0 and inp.emi:
-                for _m in range(12):
-                    loan = max(loan * (1 + inp.loan_rate / 12) - inp.emi, 0.0)
+            extra = sum(l["emi"] * 12 for l in loans if l["outstanding"] <= 0)
+            for l in loans:
+                if l["outstanding"] > 0 and l["emi"]:
+                    for _m in range(12):
+                        l["outstanding"] = max(l["outstanding"] * (1 + l["rate"] / 12) - l["emi"], 0.0)
+            loan = sum(l["outstanding"] for l in loans)
             corpus = max(corpus * (1 + ret) + contrib * 12 + extra, 0.0)
             expenses *= 1 + inp.inflation
             contrib *= 1 + inp.inflation

@@ -324,3 +324,21 @@ class PageTests(Setup):
         vals = _values_from_pulls([self.bank], dt.date(2026, 11, 2))
         self.assertEqual(vals[self.bank.id], D("502350.00"))
         self.assertEqual(_values_from_pulls([self.bank], dt.date(2026, 12, 31)), {})  # too old
+
+
+class ZerodhaSettlementTests(Setup):
+    def test_quarterly_settlement_counted_once(self):
+        stmt = self.imp(self.bank, "s.csv", "Date,Narration,Debit,Credit\n"
+                        "17/10/26,NEFT-YESF362-ZERODHA BROKING LTD-DSCNB A/C,,13264.88\n"
+                        "20/10/26,UPI/ZERODHA BR/XX.brk@validic/123,25000,\n")
+        payout, topup = stmt.transactions.order_by("date")
+        self.assertEqual((payout.category, payout.investment_account), ("inv_return", self.zer))
+        self.assertEqual((topup.category, topup.investment_account), ("investment", self.zer))
+        matching.confirm(payout)
+        matching.confirm(topup)
+        ledger = ("particulars,posting_date,cost_center,voucher_type,debit,credit,net_balance\n"
+                  "Funds transferred back as part of quarterly settlement,2026-10-16,NSE-EQ,Bank Payments,13264.88,0,0\n"
+                  "Funds added using UPI,2026-10-20,NSE-EQ,Bank Receipts,0,25000,25000\n")
+        zerodha_ledger.import_ledger(self.zer, ledger)
+        flows = sorted(CashFlow.objects.filter(account=self.zer).values_list("source", "amount"))
+        self.assertEqual(flows, [("kite", D("-13264.88")), ("kite", D("25000"))])  # net invested 11,735.12

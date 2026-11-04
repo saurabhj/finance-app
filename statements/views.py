@@ -1,4 +1,3 @@
-import datetime as dt
 import json
 
 from django import forms
@@ -10,8 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from ai.review import ReviewError
-from core.models import (Account, AssetClass, CashFlow, Category, CategoryRule, Person, SpendCategory,
-                         StatementUpload, Transaction)
+from core.models import (Account, AssetClass, Category, CategoryRule, Household, SpendCategory, StatementUpload,
+                         Transaction)
 
 from . import importer, matching, rules, spending
 
@@ -30,6 +29,30 @@ class AccountForm(forms.ModelForm):
             f.widget.attrs["class"] = "form-select form-select-sm" if isinstance(f.widget, forms.Select) else "form-control form-control-sm"
 
 
+class RuleForm(forms.ModelForm):
+    class Meta:
+        model = CategoryRule
+        fields = ["keyword", "applies_to", "direction", "category", "spend_category", "target_account"]
+        labels = {"target_account": "Investment account (for investments)", "applies_to": "Applies to",
+                  "spend_category": "Spend type (for spending)"}
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.fields["target_account"].queryset = Account.investment_accounts().filter(is_active=True)
+        for f in self.fields.values():
+            f.widget.attrs["class"] = "form-select form-select-sm" if isinstance(f.widget, forms.Select) else "form-control form-control-sm"
+
+    def clean(self):
+        d = super().clean()
+        if d.get("category") == Category.EXPENSE and not d.get("spend_category"):
+            self.add_error("spend_category", "Pick a spend type for spending rules.")
+        if d.get("category") in (Category.INVESTMENT, Category.INVESTMENT_RETURN) and not d.get("target_account"):
+            self.add_error("target_account", "Pick the investment account.")
+        if d.get("keyword"):
+            d["keyword"] = d["keyword"].strip().upper()
+        return d
+
+
 def _statement_accounts():
     return Account.objects.filter(is_active=True, kind__in=[Account.Kind.BANK, Account.Kind.CARD]).select_related("owner")
 
@@ -42,7 +65,40 @@ def home(request):
         "unconfirmed": Transaction.objects.filter(confirmed=False).count(),
         "user_rules": CategoryRule.objects.filter(is_builtin=False).select_related("target_account"),
         "account_form": AccountForm(),
+        "rule_form": RuleForm(),
+        "notes": Household.get().categorization_notes,
     })
+
+
+@login_required
+@require_POST
+def add_rule(request):
+    form = RuleForm(request.POST)
+    if form.is_valid():
+        rule = form.save()
+        n = importer.reapply_rules()
+        messages.success(request, f'Rule "{rule.keyword}" added; {n} unconfirmed transaction{"s" if n != 1 else ""} re-tagged.')
+    else:
+        messages.error(request, "Rule not added: " + "; ".join(f"{k}: {v[0]}" for k, v in form.errors.items()))
+    return redirect("statements")
+
+
+@login_required
+@require_POST
+def save_notes(request):
+    hh = Household.get()
+    hh.categorization_notes = request.POST.get("notes", "")[:5000]
+    hh.save(update_fields=["categorization_notes"])
+    messages.success(request, "Notes saved. Claude will follow them for new uploads and reviews.")
+    return redirect("statements")
+
+
+@login_required
+@require_POST
+def reapply(request):
+    n = importer.reapply_rules()
+    messages.success(request, f"{n} unconfirmed transaction{'s' if n != 1 else ''} re-tagged by rules.")
+    return redirect("statements_review")
 
 
 @login_required

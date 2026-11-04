@@ -50,6 +50,7 @@ def build(cadence, today=None, fetch_history=True):
             "inflation": float(hh.inflation),
             "emergency_fund_months": hh.emergency_fund_months,
             "target_fi_date": str(hh.target_fi_date) if hh.target_fi_date else None,
+            "family_notes": hh.categorization_notes or None,
         },
         "net_worth": _net_worth(periods),
         "accounts": _accounts(snap, total_assets),

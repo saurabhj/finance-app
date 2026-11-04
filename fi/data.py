@@ -40,7 +40,7 @@ def build_inputs(snapshot=None, periods=None):
     balances = {b.account_id: float(b.value) for b in snapshot.balances.all()}
     loans = list(loan_accounts())
     loan_out = sum(balances.get(l.id, 0.0) for l in loans)
-    emi = sum(float(l.emi or 0) for l in loans)
+    emi = sum(float(l.emi or 0) for l in loans if balances.get(l.id))  # only loans with an outstanding entered
     rate = next((float(l.interest_rate) for l in loans if l.interest_rate), 0.0)
     bank = sum(float(b.value) for b in snapshot.balances.select_related("account") if b.account.kind == Account.Kind.BANK)
     invest = {a["asset_class"]: float(a["value"]) for a in analytics.allocation(snapshot, investments_only=True)}
@@ -49,6 +49,8 @@ def build_inputs(snapshot=None, periods=None):
         as_of=snapshot.date, investments=invest, bank_cash=bank,
         monthly_expenses=float(expense.amount), expenses_include_emi=expense.includes_emi,
         loan_outstanding=loan_out, emi=emi, loan_rate=rate,
+        loans=[{"name": l.name, "outstanding": balances.get(l.id, 0.0), "emi": float(l.emi or 0),
+                "rate": float(l.interest_rate or 0)} for l in loans if balances.get(l.id)],
         monthly_investment=actual if actual is not None else float(hh.planned_monthly_investment),
         swr=float(hh.safe_withdrawal_rate), inflation=float(hh.inflation),
         emergency_months=hh.emergency_fund_months, returns=hh.expected_returns or {},

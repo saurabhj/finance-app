@@ -15,7 +15,6 @@ HUNDRED = Decimal(100)
 def initial_values():
     hh = Household.get()
     exp = MonthlyExpense.objects.order_by("-month").first()
-    loan = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True).first()
     latest = Snapshot.objects.order_by("-date").first()
     out = {
         "monthly_expenses": exp.amount if exp else None,
@@ -31,11 +30,15 @@ def initial_values():
         "target_fi_date": hh.target_fi_date,
         "loan_backfill": True,
     }
-    if loan:
+    loans = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True)
+    if not loans.exists():
+        out["loan_name"] = "Home loan"
+    for loan in loans:
         bal = Balance.objects.filter(account=loan, snapshot=latest).first() if latest else None
-        out.update(loan_owner=loan.owner, loan_outstanding=bal.value if bal else None, loan_emi=loan.emi,
-                   loan_rate=loan.interest_rate * HUNDRED if loan.interest_rate else None,
-                   loan_end_date=loan.loan_end_date)
+        k = f"loan{loan.id}_"
+        out.update({k + "outstanding": bal.value if bal else None, k + "emi": loan.emi,
+                    k + "rate": loan.interest_rate * HUNDRED if loan.interest_rate else None,
+                    k + "end": loan.loan_end_date})
     targets = {t.asset_class: t for t in AllocationTarget.objects.all()}
     for c in CLASSES:
         t = targets.get(c)
@@ -72,18 +75,24 @@ def save_plan(d):
             AllocationTarget.objects.update_or_create(
                 asset_class=c, defaults={"target_pct": d[f"target_{c}"], "band_pct": d.get(f"band_{c}") or 5})
 
+    pct = lambda v: (v / HUNDRED) if v else None  # noqa: E731
+    for loan in Account.objects.filter(kind=Account.Kind.LOAN, is_active=True):
+        k = f"loan{loan.id}_"
+        if k + "outstanding" in d:
+            save_loan(loan, loan.owner, d[k + "outstanding"], d.get(k + "emi"), pct(d.get(k + "rate")),
+                      d.get(k + "end"), backfill=d.get("loan_backfill"))
     if d.get("loan_outstanding"):
-        save_loan(d["loan_owner"], d["loan_outstanding"], d.get("loan_emi"),
-                  (d["loan_rate"] / HUNDRED) if d.get("loan_rate") else None, d.get("loan_end_date"),
-                  backfill=d.get("loan_backfill"))
+        new = Account(name=d["loan_name"].strip(), kind=Account.Kind.LOAN, asset_class=AssetClass.LIABILITY,
+                      sort_order=99)
+        save_loan(new, d["loan_owner"], d["loan_outstanding"], d.get("loan_emi"), pct(d.get("loan_rate")),
+                  d.get("loan_end_date"), backfill=d.get("loan_backfill"))
 
 
-def save_loan(owner, outstanding, emi, rate, end_date, backfill=True):
-    loan = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True).first()
-    if loan is None:
-        loan = Account(name="Home loan", kind=Account.Kind.LOAN, asset_class=AssetClass.LIABILITY, sort_order=99)
+def save_loan(loan, owner, outstanding, emi, rate, end_date, backfill=True):
     loan.owner, loan.emi, loan.interest_rate, loan.loan_end_date = owner, emi, rate, end_date
     loan.save()
+    if outstanding is None:
+        return loan
     latest = Snapshot.objects.order_by("-date").first()
     if not latest:
         return loan

@@ -71,6 +71,12 @@ CATEGORIZE_SCHEMA = {
 }
 
 
+def household_notes():
+    from core.models import Household
+    notes = Household.get().categorization_notes.strip()
+    return f"\n\nThe family's own instructions (always follow these):\n{notes}" if notes else ""
+
+
 def decrypt_pdf(data, password):
     """Return unencrypted PDF bytes (pypdf); raises ValueError on a wrong password."""
     from pypdf import PdfReader, PdfWriter
@@ -107,7 +113,7 @@ def check_totals(result):
 
 def extract(content_blocks, names, client=None):
     """Transcribe with the cheap model; if totals don't reconcile, re-read once with a stronger one."""
-    system = EXTRACT_SYSTEM.format(names=", ".join(names))
+    system = EXTRACT_SYSTEM.format(names=", ".join(names)) + household_notes()
     best, warning = None, ""
     for model in (settings.AI_MODEL_EXTRACT, settings.AI_MODEL_LIGHT):
         result, _usage, _served = call_claude(model, content_blocks, EXTRACT_SCHEMA, "medium",
@@ -138,7 +144,7 @@ def categorize(txns, account_kind, names, client=None):
     """Guess categories for uncategorised transactions. txns: list of Transaction (unsaved ok)."""
     out = {}
     system = ("You categorise Indian bank and credit-card transactions for a family's finance app.\n"
-              + GUIDE.format(names=", ".join(names)))
+              + GUIDE.format(names=", ".join(names)) + household_notes())
     for start in range(0, len(txns), 200):
         chunk = txns[start:start + 200]
         lines = [{"i": start + k, "description": t.description, "amount": float(abs(t.amount)),

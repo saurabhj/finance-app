@@ -22,7 +22,7 @@ def money_field(label, required=False, help_text=""):
 class PlanForm(forms.Form):
     # Spending
     monthly_expenses = money_field("Monthly expenses (₹)", True, "Rough figure for everything you spend in a month.")
-    includes_emi = forms.BooleanField(label="This figure includes the home-loan EMI", required=False, initial=True)
+    includes_emi = forms.BooleanField(label="This figure includes loan EMIs", required=False, initial=True)
     expenses_from = forms.DateField(label="Applies from", widget=forms.DateInput(attrs={**H, "type": "date"}))
     # Income / life energy
     monthly_net_income = money_field("Household take-home income per month (₹)")
@@ -36,7 +36,9 @@ class PlanForm(forms.Form):
     inflation = pct_field("Inflation (%)", True)
     emergency_fund_months = forms.IntegerField(label="Emergency fund (months of expenses)", min_value=0, widget=forms.NumberInput(attrs=H))
     target_fi_date = forms.DateField(label="Target FI date (optional)", required=False, widget=forms.DateInput(attrs={**H, "type": "date"}))
-    # Home loan
+    # "Add a loan" row (existing loans get their own loan<id>_* fields)
+    loan_name = forms.CharField(label="Name", required=False, max_length=80,
+                                widget=forms.TextInput(attrs={**H, "placeholder": "e.g. Car loan"}))
     loan_owner = forms.ModelChoiceField(label="Loan in whose name", queryset=Person.objects.all(), required=False,
                                         widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
     loan_outstanding = money_field("Outstanding today (₹)")
@@ -53,6 +55,15 @@ class PlanForm(forms.Form):
             self.fields[f"target_{c}"] = pct_field(f"{label} target %")
             self.fields[f"band_{c}"] = pct_field(f"{label} band ±%")
             self.fields[f"return_{c}"] = pct_field(f"{label} expected return %")
+        from core.models import Account
+        self.loans = list(Account.objects.filter(kind=Account.Kind.LOAN, is_active=True).order_by("id"))
+        for loan in self.loans:
+            k = f"loan{loan.id}_"
+            self.fields[k + "outstanding"] = money_field("Outstanding today (₹)")
+            self.fields[k + "emi"] = money_field("EMI (₹)")
+            self.fields[k + "rate"] = pct_field("Interest rate (%)")
+            self.fields[k + "end"] = forms.DateField(label="Ends", required=False,
+                                                    widget=forms.DateInput(attrs={**H, "type": "date"}))
         self.fields["includes_emi"].widget.attrs["class"] = "form-check-input"
         self.fields["loan_backfill"].widget.attrs["class"] = "form-check-input"
 
@@ -61,9 +72,16 @@ class PlanForm(forms.Form):
         targets = [data.get(f"target_{c}") for c in CLASSES]
         if any(t is not None for t in targets) and abs(sum(t or 0 for t in targets) - 100) > Decimal("0.5"):
             raise forms.ValidationError("Allocation targets must add up to 100%.")
-        if data.get("loan_outstanding") and not data.get("loan_owner"):
-            self.add_error("loan_owner", "Choose whose name the loan is in.")
+        if data.get("loan_outstanding"):
+            if not data.get("loan_owner"):
+                self.add_error("loan_owner", "Choose whose name the loan is in.")
+            if not (data.get("loan_name") or "").strip():
+                self.add_error("loan_name", "Give the loan a name.")
         return data
+
+    def loan_rows(self):
+        return [{"loan": l, **{f: self[f"loan{l.id}_{f}"] for f in ("outstanding", "emi", "rate", "end")}}
+                for l in self.loans]
 
     def allocation_rows(self):
         return [{"label": AssetClass(c).label, "target": self[f"target_{c}"], "band": self[f"band_{c}"],
