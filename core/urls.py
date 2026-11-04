@@ -20,3 +20,10 @@ urlpatterns += [
     path("zerodha/<int:person_id>/pull/", views.zerodha_pull, name="zerodha_pull"),
     path("zerodha/callback/", views.zerodha_callback, name="zerodha_callback"),
 ]
+
+from fi import views as fi_views  # noqa: E402
+
+urlpatterns += [
+    path("fi/", fi_views.fi, name="fi"),
+    path("plan/", fi_views.plan, name="plan"),
+]

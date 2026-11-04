@@ -6,7 +6,9 @@
       <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a></li>
       <li class="nav-item"><a class="nav-link" href="{% url 'snapshot_new' %}">Month-end entry</a></li>
       <li class="nav-item"><a class="nav-link" href="{% url 'cashflows' %}">Money moved</a></li>
+      <li class="nav-item"><a class="nav-link" href="{% url 'fi' %}">Financial independence</a></li>
       <li class="nav-item"><a class="nav-link" href="{% url 'holdings' %}">Holdings</a></li>
+      <li class="nav-item"><a class="nav-link" href="{% url 'plan' %}">Plan</a></li>
       <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Settings</a></li>
     </ul>
     <form method="post" action="{% url 'logout' %}" class="d-flex">{% csrf_token %}

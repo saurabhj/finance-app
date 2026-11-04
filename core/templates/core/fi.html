@@ -1,0 +1,123 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-baseline mb-3">
+  <h4 class="mb-0">Financial independence</h4>
+  <a class="small" href="{% url 'plan' %}">Edit plan &amp; assumptions</a>
+</div>
+
+<div class="row row-cols-2 row-cols-lg-4 g-3 mb-4">
+  {% include "core/includes/kpi.html" with label="FI progress" value=inp.progress|pct_plain sub="corpus ÷ FI target" %}
+  {% include "core/includes/kpi.html" with label="FI target" value=inp.fi_target|inr sub="30×-style corpus + loan payoff" %}
+  {% include "core/includes/kpi.html" with label="Safe income vs expenses" value=inp.safe_monthly_income|inr sub=income_sub %}
+  {% if proj.crossover_months == 0 %}
+    {% include "core/includes/kpi.html" with label="Crossover" value="Reached" css="text-success" sub="Safe income already covers core spending" %}
+  {% else %}
+    {% include "core/includes/kpi.html" with label="Crossover (projected)" value=proj.crossover_date|date:"M Y"|default:"Beyond 40 yrs" sub=cross_sub %}
+  {% endif %}
+</div>
+
+<div class="card mb-4"><div class="card-body small">
+  <strong>Where you stand.</strong>
+  Corpus {{ inp.corpus|inr }} (investments + {{ inp.excess_cash|inr }} cash above a {{ inp.emergency_months }}-month emergency fund of {{ inp.emergency_fund|inr }}).
+  {% if inp.loan_outstanding %}Home loan outstanding {{ inp.loan_outstanding|inr }} is counted as something to pay off at FI, so the EMI isn't treated as a forever expense.{% else %}<span class="text-warning">No home loan entered yet</span>. Add it on the <a href="{% url 'plan' %}">Plan</a> page for an honest picture.{% endif %}
+  {% if gap %}Gap to FI: <strong>{{ gap|inr }}</strong>.{% endif %}
+  Projection assumes {{ proj.annual_return|pct_plain }} a year blended return, {{ inp.inflation|pct_plain }} inflation, and {{ inp.monthly_investment|inr }}/month invested ({{ contrib_source }}{% if contrib_source == "planned" %}: actual figure takes over after 3 tracked months{% endif %}).
+  {% if prob_5y is not None %}Chance of crossing over within 5 years in the simulation: <strong>{{ prob_5y|pct_plain }}</strong>.{% endif %}
+  {% if target_prob is not None %} By your target date ({{ hh.target_fi_date|date:"M Y" }}): <strong>{{ target_prob|pct_plain }}</strong>.{% endif %}
+</div></div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+    <h6>The wall chart</h6>
+    <p class="small text-muted mb-2">YMOYL's wall chart: core monthly spending vs. the income your investments could safely pay ({{ inp.swr|pct_plain }} a year). Where the lines cross is financial independence.</p>
+    <canvas id="wallChart" height="170"></canvas>
+  </div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+    <h6>Corpus projection</h6>
+    <p class="small text-muted mb-2">2,000 simulated futures (σ {{ mc.sigma|pct_plain }}). Shaded: 10th–90th percentile; line: median; dashed: the FI target as expenses inflate and the loan runs down.</p>
+    <canvas id="mcChart" height="170"></canvas>
+  </div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7"><div class="card h-100"><div class="card-body">
+    <h6>Allocation vs target</h6>
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Class</th><th class="num">Value</th><th class="num">Actual</th><th class="num">Target</th><th class="num">Drift</th><th class="num">To rebalance</th></tr></thead>
+      {% for d in drift %}
+      <tr {% if d.out_of_band %}class="table-warning"{% endif %}>
+        <td>{{ d.label }}</td><td class="num">{{ d.value|inr }}</td><td class="num">{{ d.actual|pct_plain }}</td>
+        <td class="num">{% if d.target is not None %}{{ d.target|pct_plain }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="num {% if d.out_of_band %}text-danger{% endif %}">{{ d.diff|pct }}</td>
+        <td class="num">{% if d.rebalance_amount is not None %}{{ d.rebalance_amount|inr_signed }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if not has_targets %}<p class="small text-muted mt-2 mb-0">No targets set yet. Add them on the <a href="{% url 'plan' %}">Plan</a> page, or let the first monthly review propose them.</p>{% endif %}
+  </div></div></div>
+
+  <div class="col-lg-5"><div class="card h-100"><div class="card-body">
+    <h6>Life energy</h6>
+    {% if wage %}
+      <p class="mb-1">Your real hourly wage: <strong>{{ wage|inr }}</strong></p>
+      <p class="small text-muted">Take-home minus work costs, divided by every hour work takes. Monthly spending of {{ inp.monthly_expenses|inr }} costs <strong>{{ expense_hours|floatformat:0 }} hours</strong> of life energy.</p>
+      <label class="form-label small mb-0">What does this cost in hours?</label>
+      <div class="input-group input-group-sm" style="max-width: 280px">
+        <span class="input-group-text">₹</span><input id="leAmount" class="form-control" inputmode="decimal" placeholder="e.g. 150000">
+        <span class="input-group-text" id="leHours">— hrs</span>
+      </div>
+    {% else %}
+      <p class="small text-muted">Add take-home income and hours worked on the <a href="{% url 'plan' %}">Plan</a> page to see your real hourly wage.</p>
+    {% endif %}
+    {% if savings_rates %}
+      <h6 class="mt-3">Savings rate</h6>
+      <table class="table table-sm mb-0">{% for s in savings_rates %}<tr><td>{{ s.date|date:"M Y" }}</td><td class="num">{{ s.savings|inr_signed }}</td><td class="num">{{ s.rate|pct_plain }}</td></tr>{% endfor %}</table>
+    {% endif %}
+  </div></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const D = {{ chart_json|safe }};
+const fmt = v => v == null ? '—' : (Math.abs(v) >= 1e7 ? (v/1e7).toFixed(2)+' Cr' : Math.abs(v) >= 1e5 ? (v/1e5).toFixed(1)+' L' : Math.round(v).toLocaleString('en-IN'));
+const tick = {callback: v => '₹' + fmt(v)};
+const tip = {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}};
+
+// Wall chart: history (monthly) followed by projection (yearly)
+const wallLabels = [...D.hist_labels, ...D.proj_labels.slice(1)];
+const pad = n => Array(n).fill(null);
+const H = D.hist_labels.length;
+new Chart(document.getElementById('wallChart'), {
+  type: 'line',
+  data: {labels: wallLabels, datasets: [
+    {label: 'Safe monthly income', data: [...D.hist_income, ...pad(D.proj_labels.length - 1)], borderColor: '#3a9d5d', tension: .2},
+    {label: 'Core monthly spending', data: [...D.hist_expenses, ...pad(D.proj_labels.length - 1)], borderColor: '#c0392b', tension: .2},
+    {label: 'Projected income', data: [...pad(H - 1), D.hist_income[H-1], ...D.proj_income.slice(1)], borderColor: '#3a9d5d', borderDash: [5,4], pointRadius: 0},
+    {label: 'Projected spending', data: [...pad(H - 1), D.hist_expenses[H-1], ...D.proj_expenses.slice(1)], borderColor: '#c0392b', borderDash: [5,4], pointRadius: 0},
+  ]},
+  options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}, interaction: {mode: 'index', intersect: false}}
+});
+
+new Chart(document.getElementById('mcChart'), {
+  type: 'line',
+  data: {labels: D.band_labels, datasets: [
+    {label: '90th percentile', data: D.p90, borderColor: 'transparent', backgroundColor: 'rgba(42,111,219,.15)', fill: '+1', pointRadius: 0},
+    {label: '10th percentile', data: D.p10, borderColor: 'transparent', backgroundColor: 'rgba(42,111,219,.15)', fill: false, pointRadius: 0},
+    {label: 'Median', data: D.p50, borderColor: '#2a6fdb', pointRadius: 0},
+    {label: 'FI target', data: D.target.slice(0, D.band_labels.length), borderColor: '#222', borderDash: [5,4], pointRadius: 0},
+  ]},
+  options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}, interaction: {mode: 'index', intersect: false}}
+});
+
+{% if wage %}
+const wage = {{ wage|floatformat:2 }};
+document.getElementById('leAmount').addEventListener('input', e => {
+  const v = parseFloat(e.target.value.replace(/,/g, ''));
+  document.getElementById('leHours').textContent = isNaN(v) ? '— hrs' : (v / wage).toFixed(1) + ' hrs';
+});
+{% endif %}
+</script>
+{% endblock %}

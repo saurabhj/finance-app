@@ -123,7 +123,7 @@ def periods():
     return result
 
 
-def allocation(snapshot):
+def allocation(snapshot, investments_only=False):
     """Asset-class split of a snapshot's assets (loans excluded).
 
     Uses holding-level positions where an account has them, else the account's
@@ -132,7 +132,7 @@ def allocation(snapshot):
     totals = defaultdict(lambda: ZERO)
     for bal in snapshot.balances.select_related("account", "pull"):
         acc = bal.account
-        if acc.is_liability:
+        if acc.is_liability or (investments_only and not acc.is_investment):
             continue
         positions = list(bal.pull.positions.select_related("instrument")) if bal.pull else []
         pos_total = sum((p.value for p in positions), ZERO)

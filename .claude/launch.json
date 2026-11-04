@@ -4,7 +4,10 @@
     {
       "name": "finance-app",
       "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["-c", "source venv/bin/activate && python3 manage.py runserver 8765"],
+      "runtimeArgs": [
+        "-c",
+        "source venv/bin/activate && python3 manage.py runserver 8765"
+      ],
       "port": 8765
     }
   ]

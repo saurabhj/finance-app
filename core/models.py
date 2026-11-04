@@ -51,6 +51,11 @@ class Account(models.Model):
     )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # Loans only
+    emi = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    interest_rate = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True,
+                                        help_text="Annual, e.g. 0.085")
+    loan_end_date = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["owner_id", "sort_order", "id"]
@@ -262,6 +267,18 @@ class Household(models.Model):
     inflation = models.DecimalField(max_digits=5, decimal_places=4, default=Decimal("0.06"))
     emergency_fund_months = models.PositiveIntegerField(default=12)
     target_fi_date = models.DateField(null=True, blank=True)
+    work_costs_monthly = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="YMOYL: money spent only because you work (commute, work clothes, meals out, childcare).",
+    )
+    planned_monthly_investment = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Used for projections until there are 3 tracked months of actual investing.",
+    )
+    expected_returns = models.JSONField(
+        default=dict, blank=True,
+        help_text='Annual nominal return per asset class, e.g. {"equity": 0.11}. Blank = conservative defaults.',
+    )
 
     @classmethod
     def get(cls):

@@ -22,6 +22,15 @@ python3 manage.py runserver 0.0.0.0:8765
 3. **Holdings → upload the CAS PDF** from mfcentral.com. This brings in MF holdings plus every SIP and redemption.
 4. **Month-end entry**: Zerodha and MF values and "invested" amounts come pre-filled. Type the bank and FD balances and save.
 
+## Financial independence
+Fill in the **Plan** page: rough monthly expenses, income and hours worked, the home loan, and optionally target allocation. The **Financial independence** page then shows:
+- **FI target**: core expenses (excluding EMI) × 12 ÷ safe withdrawal rate, plus the loan outstanding (the loan is paid off at FI, not carried forever).
+- **Corpus**: investments + bank cash above the emergency fund.
+- **The wall chart**: safe monthly income vs. core spending over time, and the projected **crossover** month.
+- **Monte Carlo**: 2,000 simulated futures, giving percentile bands and the chance of reaching FI by your target date.
+- **Life energy**: real hourly wage and what a purchase costs in hours of work.
+- **Allocation vs. target**: drift per asset class and the amount needed to rebalance.
+
 ## Zerodha (Kite Connect)
 Create one app per Zerodha login at developers.kite.trade. Set its redirect URL to `http://<host>:8765/zerodha/callback/`, then put the key and secret in `.env` as `KITE_API_KEY_SAURABH`, `KITE_API_SECRET_SAURABH` (and the same for `PRITIKA`). Access is read-only; the app never places orders.
 

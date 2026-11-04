@@ -20,7 +20,7 @@ That's what separates new savings from real market gain. Moving money between tw
         <tr>
           <td>{{ r.account.name }}<div class="small text-muted">{{ r.account.get_kind_display }}</div></td>
           <td>{{ r.value.errors }}<input class="form-control form-control-sm num" name="{{ r.value.html_name }}" value="{{ r.value.value|default_if_none:'' }}" inputmode="decimal"></td>
-          <td>{% if r.flow %}{{ r.flow.errors }}<input class="form-control form-control-sm num" name="{{ r.flow.html_name }}" value="{{ r.flow.value|default_if_none:'' }}" placeholder="0" inputmode="decimal">{% else %}<span class="small text-muted">cash</span>{% endif %}</td>
+          <td>{% if r.flow %}{{ r.flow.errors }}<input class="form-control form-control-sm num" name="{{ r.flow.html_name }}" value="{{ r.flow.value|default_if_none:'' }}" placeholder="0" inputmode="decimal">{% elif r.account.is_liability %}<span class="small text-muted">outstanding</span>{% else %}<span class="small text-muted">cash</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </table>
