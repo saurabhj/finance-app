@@ -1,0 +1,29 @@
+{% extends "core/base.html" %}
+{% block page_title %}{% if loan %}Edit loan{% else %}Add a loan{% endif %}{% endblock %}
+{% block page_title_bar %}<a href="{% url 'loans' %}" class="text-muted">Loans</a> <span class="text-muted">/</span> {% if loan %}Edit {{ loan.account.name }}{% else %}Add a loan{% endif %}{% endblock %}
+{% block content %}
+<p class="muted-note">Use the figures from your sanction letter or loan statement. If you don't have the original details, enter <strong>today's outstanding</strong> as the amount, today as the start date, and the <strong>months remaining</strong> as the tenure.</p>
+<form method="post" data-primary style="max-width: 820px">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+  <div class="card"><div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.name %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.owner %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.lender %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.loan_type %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.rate_type %}</div>
+      <div class="col-md-4">{% if form.initial_rate %}{% include "core/includes/field.html" with f=form.initial_rate %}{% endif %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.principal %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.start_date %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.tenure_months %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.first_emi_date %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.emi %}</div>
+      <div class="col-md-4">{% include "core/includes/field.html" with f=form.statement_keyword %}</div>
+      <div class="col-12">{% include "core/includes/field.html" with f=form.notes %}</div>
+      {% if loan %}<div class="col-12">{% include "core/includes/field.html" with f=form.closed %}</div>{% endif %}
+    </div>
+  </div></div>
+  <button class="btn btn-primary mt-3">Save <span class="kbd">⌘↵</span></button>
+  <a class="btn btn-sm mt-3 ms-1" href="{% if loan %}{% url 'loan_detail' loan.pk %}{% else %}{% url 'loans' %}{% endif %}">Cancel</a>
+</form>
+{% endblock %}

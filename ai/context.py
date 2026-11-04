@@ -54,6 +54,7 @@ def build(cadence, today=None, fetch_history=True):
         },
         "net_worth": _net_worth(periods),
         "accounts": _accounts(snap, total_assets),
+        "loans": _loans(today),
         "fi": _fi(periods, hh),
         "holdings": _holdings(snap, total_assets, fetch_history),
         "benchmarks": {"Nifty 50": mfapi.benchmark_returns("Nifty 50")} if fetch_history else {},
@@ -100,6 +101,30 @@ def _accounts(snap, total_assets):
             "share_of_assets": None if a.is_liability else _r(float(b.value) / total_assets, 4) if total_assets else None,
             **({"emi": _r(a.emi), "interest_rate": float(a.interest_rate) if a.interest_rate else None,
                 "loan_end_date": str(a.loan_end_date) if a.loan_end_date else None} if a.is_liability else {}),
+        })
+    return out
+
+
+def _loans(today):
+    from core.models import Loan
+    from loans.schedule import for_loan, savings_from_prepayments
+
+    out = []
+    for loan in Loan.objects.filter(closed=False).select_related("account__owner"):
+        sch = for_loan(loan, today)
+        fy = sch.fy_totals(today) or {}
+        sav = savings_from_prepayments(loan, today)
+        out.append({
+            "name": loan.account.name, "owner": loan.account.owner.name, "type": loan.loan_type,
+            "rate_type": loan.rate_type, "current_rate": float(sch.current.rate) if sch.current else None,
+            "current_emi": _r(sch.current.emi) if sch.current else None, "outstanding": _r(sch.outstanding),
+            "principal": _r(loan.principal), "start_date": str(loan.start_date), "payoff_date": str(sch.payoff_date),
+            "months_left": sch.months_left, "interest_paid": _r(sch.interest_paid),
+            "interest_remaining": _r(sch.interest_remaining), "prepaid_total": _r(sch.prepaid),
+            "this_fy": {"interest": _r(fy.get("interest")), "principal": _r(fy.get("principal"))},
+            "rate_history": [{"from": str(r.effective_date), "rate": float(r.rate)} for r in loan.rates.all()],
+            "prepayments": [{"date": str(p.date), "amount": _r(p.amount), "effect": p.effect} for p in loan.prepayments.all()],
+            "prepayment_savings": {"interest": _r(sav["interest_saved"]), "months": sav["months_saved"]} if sav else None,
         })
     return out
 

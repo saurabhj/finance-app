@@ -81,13 +81,6 @@ class MultiLoanTests(TestCase):
         self.assertEqual(i.fi_target, i.core_expenses * 12 / i.swr + 2e5)
 
 
-class LoanBackfillTests(TestCase):
-    def test_backward_amortisation_round_trips(self):
-        past = services.estimate_past_outstanding(D("5000000"), D("60000"), D("0.085"),
-                                                  dt.date(2026, 10, 1), dt.date(2026, 11, 4))
-        forward = past * (1 + D("0.085") / 12) - D("60000")
-        self.assertAlmostEqual(float(forward), 5000000, delta=1)
-
 
 class PlanPageTests(TestCase):
     def setUp(self):
@@ -106,8 +99,6 @@ class PlanPageTests(TestCase):
              "monthly_net_income": "600000", "hours_worked_per_month": "220", "work_costs_monthly": "40000",
              "planned_monthly_investment": "150000", "safe_withdrawal_rate": "3.33", "inflation": "6",
              "emergency_fund_months": "12", "target_fi_date": "2030-12-31",
-             "loan_name": "Home loan", "loan_owner": self.p.id, "loan_outstanding": "5000000", "loan_emi": "60000", "loan_rate": "8.5",
-             "loan_end_date": "2035-01-01", "loan_backfill": "on",
              "target_equity": "70", "target_gold": "10", "target_debt": "15", "target_cash": "5", "target_hybrid": "",
              "band_equity": "5", "return_equity": "11"}
         d.update(kw)
@@ -123,16 +114,20 @@ class PlanPageTests(TestCase):
         self.assertEqual(hh.safe_withdrawal_rate, D("0.0333"))
         self.assertEqual(MonthlyExpense.objects.get().amount, D("200000"))
         self.assertEqual(AllocationTarget.objects.count(), 4)
-        loan = Account.objects.get(kind="loan")
-        # outstanding on latest snapshot, estimated for both earlier ones
-        self.assertEqual(Balance.objects.filter(account=loan).count(), 3)
-        older = Balance.objects.get(account=loan, snapshot__date=dt.date(2026, 9, 1)).value
-        self.assertGreater(older, D("5000000"))
+        # a home loan added on the Loans page feeds the FI maths
+        from core.models import Loan, LoanRate
+        from loans import services as loan_services
+        acc = loan_services.create_account("Home loan", self.p)
+        loan = Loan.objects.create(account=acc, principal=D("5000000"), start_date=dt.date(2026, 10, 15),
+                                   tenure_months=240, emi=D("60000"))
+        LoanRate.objects.create(loan=loan, effective_date=loan.start_date, rate=D("0.085"))
+        loan_services.sync_account(loan)
+        self.assertEqual(loan_services.fill_snapshots(loan), 1)  # only the 4 Nov entry is after the start
 
         r = self.client.get("/fi/")
         self.assertEqual(r.status_code, 200)
         inp = r.context["inp"]
-        self.assertEqual(inp.loan_outstanding, 5e6)
+        self.assertAlmostEqual(inp.loan_outstanding, 5e6, delta=1)
         self.assertEqual(inp.core_expenses, 140000)
         self.assertContains(r, "wall chart")
         self.assertAlmostEqual(r.context["wage"], (600000 - 40000) / 220)
@@ -141,15 +136,6 @@ class PlanPageTests(TestCase):
         r = self.client.post("/plan/", self.form(target_cash="20"))
         self.assertContains(r, "must add up to 100")
 
-    def test_rerunning_backfill_does_not_overwrite(self):
-        self.client.post("/plan/", self.form())
-        loan = Account.objects.get(kind="loan")
-        k = f"loan{loan.id}_"
-        self.client.post("/plan/", self.form(loan_outstanding="", loan_name="", **{
-            k + "outstanding": "4900000", k + "emi": "60000", k + "rate": "8.5", k + "end": "2035-01-01"}))
-        self.assertEqual(Account.objects.filter(kind="loan").count(), 1)
-        self.assertEqual(Balance.objects.filter(account=loan).count(), 3)
-        self.assertEqual(Balance.objects.get(account=loan, snapshot__date=dt.date(2026, 11, 4)).value, D("4900000"))
 
     def test_drift(self):
         self.client.post("/plan/", self.form())

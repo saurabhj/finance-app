@@ -54,3 +54,18 @@ urlpatterns += [
     path("spending/", st_views.spending_view, name="spending"),
     path("spending/adopt/", st_views.spending_adopt, name="spending_adopt"),
 ]
+
+from loans import views as loan_views  # noqa: E402
+
+urlpatterns += [
+    path("loans/", loan_views.loan_list, name="loans"),
+    path("loans/new/", loan_views.loan_edit, name="loan_new"),
+    path("loans/<int:pk>/", loan_views.loan_detail, name="loan_detail"),
+    path("loans/<int:pk>/edit/", loan_views.loan_edit, name="loan_edit"),
+    path("loans/<int:pk>/rates/", loan_views.add_rate, name="loan_add_rate"),
+    path("loans/<int:pk>/prepayments/", loan_views.add_prepayment, name="loan_add_prepayment"),
+    path("loans/<int:pk>/checkpoints/", loan_views.add_checkpoint, name="loan_add_checkpoint"),
+    path("loans/<int:pk>/<str:kind>/<int:item>/delete/", loan_views.delete_item, name="loan_delete_item"),
+    path("loans/<int:pk>/from-transaction/<int:txn>/", loan_views.prepayment_from_transaction, name="loan_prepay_txn"),
+    path("loans/<int:pk>/refresh-snapshots/", loan_views.refresh_snapshots, name="loan_refresh_snapshots"),
+]

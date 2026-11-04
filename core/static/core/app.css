@@ -267,3 +267,7 @@ details summary { cursor: pointer; color: var(--muted); }
 .rv td.desc .small { overflow: hidden; text-overflow: ellipsis; }
 .rv select.cat { min-width: 11.5rem; }
 .rv select.spend, .rv select.inv { min-width: 12rem; }
+
+/* progress bar */
+.bar { display: inline-block; width: calc(100% - 46px); height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; margin-right: 6px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }

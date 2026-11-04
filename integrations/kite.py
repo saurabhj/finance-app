@@ -164,7 +164,7 @@ def _add(pull, inst, qty, avg, price, value):
 
 def people_status():
     out = []
-    for p in Person.objects.all():
+    for p in Person.objects.people():
         session = KiteSession.objects.filter(person=p).first()
         out.append({
             "person": p,

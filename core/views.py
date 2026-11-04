@@ -114,6 +114,9 @@ def _values_from_pulls(accounts, date):
             if last:
                 flows = CashFlow.objects.filter(account=acc, date__gt=last.snapshot.date, date__lte=date)
                 out[acc.id] = last.value + (flows.aggregate(t=Sum("amount"))["t"] or 0)
+        elif acc.kind == Account.Kind.LOAN and hasattr(acc, "loan"):
+            from loans.schedule import for_loan
+            out[acc.id] = for_loan(acc.loan, today=date).outstanding_on(date).quantize(Decimal("0.01"))
         elif acc.kind == Account.Kind.BANK:
             txn = (acc.transactions.filter(balance__isnull=False, date__lte=date,
                                            date__gte=date - dt.timedelta(days=10)).order_by("-date", "-id").first())
@@ -214,7 +217,7 @@ def holdings(request):
     ctx = {
         "blocks": blocks,
         "kite_status": kite.people_status(),
-        "people": Person.objects.all(),
+        "people": Person.objects.people(),
         "zerodha_accounts": accounts.filter(kind=Account.Kind.BROKER),
         "mf_accounts": accounts.filter(kind=Account.Kind.MF),
         "needs_review": Instrument.objects.filter(needs_review=True, positions__isnull=False).distinct().count(),

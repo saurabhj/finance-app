@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block page_title %}Loans{% endblock %}
+{% block page_title_bar %}Loans{% endblock %}
+{% block page_actions %}<a class="btn btn-sm btn-primary" href="{% url 'loan_new' %}">Add a loan</a>{% endblock %}
+{% block content %}
+{% for acc in missing %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <span><strong>{{ acc.name }}</strong> ({{ acc.owner }}) has no loan details yet, so there's no schedule.</span>
+  <a class="btn btn-sm" href="{% url 'loan_new' %}?account={{ acc.id }}">Add details</a>
+</div>
+{% endfor %}
+
+{% if loans %}
+<div class="stats">
+  {% include "core/includes/kpi.html" with label="Outstanding" value=totals.outstanding|inr %}
+  {% include "core/includes/kpi.html" with label="EMIs per month" value=totals.emi|inr %}
+  {% include "core/includes/kpi.html" with label="Interest this FY" value=totals.interest_fy|inr sub="paid + due till 31 Mar" %}
+  {% include "core/includes/kpi.html" with label="Interest still to pay" value=totals.interest_left|inr %}
+  {% include "core/includes/kpi.html" with label="Debt-free" value=totals.debt_free|date:"M Y" %}
+</div>
+
+<div class="card"><div class="card-body p-0">
+<table class="table table-hover" data-rows>
+  <thead><tr><th>Loan</th><th>Owner</th><th>Rate</th><th class="num">EMI</th><th class="num">Outstanding</th><th style="width:16%">Repaid</th><th class="num">Interest paid</th><th class="num">Interest left</th><th class="num">Prepaid</th><th class="num">Ends</th></tr></thead>
+  <tbody>
+  {% for x in loans %}{% with l=x.loan s=x.sch %}
+  <tr>
+    <td><a href="{% url 'loan_detail' l.pk %}">{{ l.account.name }}</a><div class="small text-muted">{{ l.lender|default:l.get_loan_type_display }}</div></td>
+    <td>{{ l.account.owner }}</td>
+    <td>{{ s.current.rate|rate }} <span class="text-muted small">{{ l.get_rate_type_display|lower }}</span></td>
+    <td class="num">{{ s.current.emi|inr }}</td>
+    <td class="num">{{ s.outstanding|inr }}</td>
+    <td>{% include "core/includes/bar.html" with frac=s.pct_repaid %}</td>
+    <td class="num">{{ s.interest_paid|inr }}</td>
+    <td class="num">{{ s.interest_remaining|inr }}</td>
+    <td class="num">{% if s.prepaid %}{{ s.prepaid|inr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+    <td class="num">{{ s.payoff_date|date:"M Y" }}<div class="small text-muted">{{ s.months_left }} months</div></td>
+  </tr>
+  {% endwith %}{% endfor %}
+  </tbody>
+</table>
+</div></div>
+{% elif not missing %}
+<div class="alert alert-light">No loans yet. <a href="{% url 'loan_new' %}">Add one</a>: home, car, personal, anything with an EMI.</div>
+{% endif %}
+
+{% if closed %}<p class="muted-note mt-3">Closed: {% for l in closed %}<a href="{% url 'loan_detail' l.pk %}">{{ l.account.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+{% endblock %}

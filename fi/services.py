@@ -28,17 +28,7 @@ def initial_values():
         "inflation": hh.inflation * HUNDRED,
         "emergency_fund_months": hh.emergency_fund_months,
         "target_fi_date": hh.target_fi_date,
-        "loan_backfill": True,
     }
-    loans = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True)
-    if not loans.exists():
-        out["loan_name"] = "Home loan"
-    for loan in loans:
-        bal = Balance.objects.filter(account=loan, snapshot=latest).first() if latest else None
-        k = f"loan{loan.id}_"
-        out.update({k + "outstanding": bal.value if bal else None, k + "emi": loan.emi,
-                    k + "rate": loan.interest_rate * HUNDRED if loan.interest_rate else None,
-                    k + "end": loan.loan_end_date})
     targets = {t.asset_class: t for t in AllocationTarget.objects.all()}
     for c in CLASSES:
         t = targets.get(c)
@@ -75,42 +65,3 @@ def save_plan(d):
             AllocationTarget.objects.update_or_create(
                 asset_class=c, defaults={"target_pct": d[f"target_{c}"], "band_pct": d.get(f"band_{c}") or 5})
 
-    pct = lambda v: (v / HUNDRED) if v else None  # noqa: E731
-    for loan in Account.objects.filter(kind=Account.Kind.LOAN, is_active=True):
-        k = f"loan{loan.id}_"
-        if k + "outstanding" in d:
-            save_loan(loan, loan.owner, d[k + "outstanding"], d.get(k + "emi"), pct(d.get(k + "rate")),
-                      d.get(k + "end"), backfill=d.get("loan_backfill"))
-    if d.get("loan_outstanding"):
-        new = Account(name=d["loan_name"].strip(), kind=Account.Kind.LOAN, asset_class=AssetClass.LIABILITY,
-                      sort_order=99)
-        save_loan(new, d["loan_owner"], d["loan_outstanding"], d.get("loan_emi"), pct(d.get("loan_rate")),
-                  d.get("loan_end_date"), backfill=d.get("loan_backfill"))
-
-
-def save_loan(loan, owner, outstanding, emi, rate, end_date, backfill=True):
-    loan.owner, loan.emi, loan.interest_rate, loan.loan_end_date = owner, emi, rate, end_date
-    loan.save()
-    if outstanding is None:
-        return loan
-    latest = Snapshot.objects.order_by("-date").first()
-    if not latest:
-        return loan
-    Balance.objects.update_or_create(snapshot=latest, account=loan, defaults={"value": outstanding})
-    if backfill and emi and rate:
-        for snap in Snapshot.objects.filter(date__lt=latest.date):
-            if Balance.objects.filter(snapshot=snap, account=loan).exists():
-                continue
-            Balance.objects.create(snapshot=snap, account=loan,
-                                   value=estimate_past_outstanding(outstanding, emi, rate, snap.date, latest.date))
-    return loan
-
-
-def estimate_past_outstanding(outstanding, emi, rate, past, now):
-    """Run the amortisation backwards: B(t-1) = (B(t) + EMI) / (1 + r/12)."""
-    months = (now.year - past.year) * 12 + (now.month - past.month)
-    b = Decimal(outstanding)
-    r = Decimal(rate) / 12
-    for _ in range(max(months, 0)):
-        b = (b + Decimal(emi)) / (1 + r)
-    return b.quantize(Decimal("0.01"))

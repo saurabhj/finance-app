@@ -1,0 +1,132 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block page_title %}{{ loan.account.name }}{% endblock %}
+{% block page_title_bar %}<a href="{% url 'loans' %}" class="text-muted">Loans</a> <span class="text-muted">/</span> {{ loan.account.name }} <span class="text-muted fw-normal small ms-2">{{ loan.account.owner }} · {{ loan.lender|default:loan.get_loan_type_display }} · {{ loan.get_rate_type_display|lower }}{% if loan.closed %} · closed{% endif %}</span>{% endblock %}
+{% block page_actions %}<a class="btn btn-sm" href="{% url 'loan_edit' loan.pk %}">Edit details</a>{% endblock %}
+{% block content %}
+{% for w in sch.warnings %}<div class="alert alert-warning">{{ w }}</div>{% endfor %}
+
+<div class="stats">
+  {% include "core/includes/kpi.html" with label="Outstanding today" value=sch.outstanding|inr sub=borrowed_sub %}
+  {% include "core/includes/kpi.html" with label="Repaid" value=sch.pct_repaid|pct_plain sub=sch.principal_paid|inr|add:" principal" %}
+  {% include "core/includes/kpi.html" with label="Rate · EMI" value=sch.current.rate|rate sub=sch.current.emi|inr|add:" a month" %}
+  {% include "core/includes/kpi.html" with label="Interest paid" value=sch.interest_paid|inr sub=sch.interest_remaining|inr|add:" still to pay" %}
+  {% include "core/includes/kpi.html" with label="Ends" value=sch.payoff_date|date:"M Y" sub=sch.months_left|stringformat:"d"|add:" EMIs left" %}
+  {% if fy %}{% include "core/includes/kpi.html" with label=fy.fy|add:" interest" value=fy.interest|inr sub=fy_sub %}{% endif %}
+</div>
+{% if savings %}
+<div class="alert alert-success">Prepayments so far ({{ sch.prepaid|inr }}) save about <strong>{{ savings.interest_saved|inr }}</strong> of interest and <strong>{{ savings.months_saved }} months</strong>. Without them the loan would run to {{ savings.payoff_without|date:"M Y" }}.</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7"><div class="card h-100"><div class="card-body">
+    <h6>Outstanding over time</h6><div class="chart-box"><canvas id="balChart"></canvas></div>
+  </div></div></div>
+  <div class="col-lg-5"><div class="card h-100"><div class="card-body">
+    <h6>Interest vs principal by financial year</h6><div class="chart-box"><canvas id="fyChart"></canvas></div>
+  </div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-4"><div class="card h-100"><div class="card-body">
+    <h6>Rate history</h6>
+    <table class="table table-sm mb-2">
+      {% for r in loan.rates.all %}<tr><td>{{ r.effective_date|date:"j M Y" }}</td><td class="num">{{ r.rate|rate }}</td><td class="small text-muted">{% if r.new_emi %}EMI {{ r.new_emi|inr }}{% else %}EMI kept{% endif %}{% if r.note %} · {{ r.note }}{% endif %}</td>
+        <td class="num"><form method="post" action="{% url 'loan_delete_item' loan.pk 'rate' r.pk %}">{% csrf_token %}<button class="btn-link btn text-danger small" title="Delete">×</button></form></td></tr>{% endfor %}
+    </table>
+    <form method="post" action="{% url 'loan_add_rate' loan.pk %}" class="row g-1">{% csrf_token %}
+      <div class="col-6">{{ rate_form.effective_date }}</div><div class="col-6">{{ rate_form.rate }}</div>
+      <div class="col-6">{{ rate_form.new_emi }}</div><div class="col-6">{{ rate_form.note }}</div>
+      <div class="col-12 form-text mt-0">New rate (%) from a date. Add the new EMI only if the bank changed it; otherwise the tenure adjusts.</div>
+      <div class="col-12"><button class="btn btn-sm">Add rate change</button></div>
+    </form>
+  </div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-body">
+    <h6>Prepayments</h6>
+    <table class="table table-sm mb-2">
+      {% for p in loan.prepayments.all %}<tr><td>{{ p.date|date:"j M Y" }}</td><td class="num">{{ p.amount|inr }}</td><td class="small text-muted">{% if p.effect == "emi" %}cut EMI{% else %}cut tenure{% endif %}{% if p.note %} · {{ p.note|truncatechars:30 }}{% endif %}</td>
+        <td class="num"><form method="post" action="{% url 'loan_delete_item' loan.pk 'prepayment' p.pk %}">{% csrf_token %}<button class="btn-link btn text-danger small" title="Delete">×</button></form></td></tr>
+      {% empty %}<tr><td class="text-muted small">None yet.</td></tr>{% endfor %}
+    </table>
+    <form method="post" action="{% url 'loan_add_prepayment' loan.pk %}" class="row g-1">{% csrf_token %}
+      <div class="col-6">{{ prepay_form.date }}</div><div class="col-6">{{ prepay_form.amount }}</div>
+      <div class="col-6">{{ prepay_form.effect }}</div><div class="col-6">{{ prepay_form.note }}</div>
+      <div class="col-12"><button class="btn btn-sm">Add prepayment</button></div>
+    </form>
+  </div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-body">
+    <h6>Bank-reported balance</h6>
+    <table class="table table-sm mb-2">
+      {% for c in loan.checkpoints.all %}<tr><td>{{ c.date|date:"j M Y" }}</td><td class="num">{{ c.outstanding|inr }}</td><td class="small text-muted">{{ c.note }}</td>
+        <td class="num"><form method="post" action="{% url 'loan_delete_item' loan.pk 'checkpoint' c.pk %}">{% csrf_token %}<button class="btn-link btn text-danger small" title="Delete">×</button></form></td></tr>
+      {% empty %}<tr><td class="text-muted small">Optional: add the outstanding from a loan statement and the schedule lines up with the bank's figure from that date.</td></tr>{% endfor %}
+    </table>
+    <form method="post" action="{% url 'loan_add_checkpoint' loan.pk %}" class="row g-1">{% csrf_token %}
+      <div class="col-6">{{ checkpoint_form.date }}</div><div class="col-6">{{ checkpoint_form.outstanding }}</div>
+      <div class="col-12">{{ checkpoint_form.note }}</div>
+      <div class="col-12"><button class="btn btn-sm">Add bank balance</button></div>
+    </form>
+    <form method="post" action="{% url 'loan_refresh_snapshots' loan.pk %}" class="mt-2">{% csrf_token %}<button class="btn-link btn small">Update month-end entries from this schedule</button></form>
+  </div></div></div>
+</div>
+
+{% if loan.statement_keyword %}
+<div class="card mb-4"><div class="card-body">
+  <h6>Payments in bank statements · "{{ loan.statement_keyword }}"</h6>
+  <table class="table table-sm">
+    {% for t in transactions %}
+    <tr><td>{{ t.date|date:"j M Y" }}</td><td>{{ t.account.name }}</td><td class="small text-muted">{{ t.description|truncatechars:60 }}</td><td class="num">{{ t.amount|inr }}</td>
+      <td class="num">{% if t.recorded_as_prepayment %}<span class="badge text-bg-success">prepayment</span>{% elif t.looks_like_prepayment %}<form method="post" action="{% url 'loan_prepay_txn' loan.pk t.pk %}">{% csrf_token %}<button class="btn btn-sm">Record as prepayment</button></form>{% endif %}</td></tr>
+    {% empty %}<tr><td class="text-muted small">No matching payments in uploaded statements yet.</td></tr>{% endfor %}
+  </table>
+</div></div>
+{% endif %}
+
+<div class="card mb-4"><div class="card-body p-0">
+  <div class="d-flex justify-content-between align-items-baseline px-3 pt-2"><h6>By financial year</h6></div>
+  <table class="table table-sm table-hover">
+    <thead><tr><th>Year</th><th class="num">EMIs paid</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Prepaid</th><th class="num">Outstanding at year end</th></tr></thead>
+    <tbody>{% for t in by_year %}<tr {% if not t.past %}class="table-light"{% endif %}><td>{{ t.fy }}</td><td class="num">{{ t.emi|inr }}</td><td class="num">{{ t.interest|inr }}</td><td class="num">{{ t.principal|inr }}</td><td class="num">{% if t.prepayment %}{{ t.prepayment|inr }}{% endif %}</td><td class="num">{{ t.closing|inr }}</td></tr>{% endfor %}</tbody>
+  </table>
+</div></div>
+
+<div class="card"><div class="card-body p-0">
+  <div class="d-flex justify-content-between align-items-baseline px-3 pt-2">
+    <h6>Amortisation schedule</h6>
+    <a class="small" href="?rows={% if show_all %}near{% else %}all{% endif %}">{% if show_all %}Show around today{% else %}Show all {{ sch.rows|length }} months{% endif %}</a>
+  </div>
+  <table class="table table-sm table-hover" data-rows>
+    <thead><tr><th>#</th><th>Month</th><th class="num">Rate</th><th class="num">EMI</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Prepaid</th><th class="num">Outstanding</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for r in sch.rows %}
+      {% if show_all or r.note or r.n >= lo and r.n <= hi %}
+      <tr {% if r.past %}class="table-light"{% endif %} {% if r.n == next_n %}style="box-shadow: inset 0 2px 0 var(--accent)"{% endif %}>
+        <td class="text-muted">{{ r.n }}</td><td>{{ r.date|date:"M Y" }}</td><td class="num">{{ r.rate|rate }}</td>
+        <td class="num">{{ r.emi|inr }}</td><td class="num">{{ r.interest|inr }}</td><td class="num">{{ r.principal|inr }}</td>
+        <td class="num">{% if r.prepayment %}{{ r.prepayment|inr }}{% endif %}</td><td class="num">{{ r.closing|inr }}</td>
+        <td class="small text-muted">{{ r.note }}</td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+ffTheme();
+const D = {{ chart_json|safe }}, K = ffColors;
+const fmt = v => Math.abs(v) >= 1e7 ? (v/1e7).toFixed(2)+' Cr' : (v/1e5).toFixed(1)+' L';
+const tick = {callback: v => '₹' + fmt(v)}, tip = {callbacks: {label: c => ' ' + c.dataset.label + ': ₹' + fmt(c.raw)}};
+const ds = [{label: 'Outstanding', data: D.balance, borderColor: K.accent, fill: {target: 'origin', above: K.accent + '14'}}];
+if (D.without) ds.push({label: 'Without prepayments', data: D.without, borderColor: K.muted, borderDash: [3,3]});
+new Chart(document.getElementById('balChart'), {type: 'line', data: {labels: D.labels, datasets: ds},
+  options: {scales: {y: {ticks: tick}, x: {ticks: {maxTicksLimit: 10}}}, plugins: {tooltip: tip,
+    annotation: {}}, interaction: {mode: 'index', intersect: false}}});
+new Chart(document.getElementById('fyChart'), {type: 'bar', data: {labels: D.fy_labels, datasets: [
+    {label: 'Interest', data: D.fy_interest, backgroundColor: K.neg + 'cc', stack: 's'},
+    {label: 'Principal', data: D.fy_principal, backgroundColor: K.accent, stack: 's'}]},
+  options: {scales: {y: {ticks: tick}, x: {ticks: {maxTicksLimit: 8}}}, plugins: {tooltip: tip}}});
+</script>
+{% endblock %}

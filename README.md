@@ -22,6 +22,15 @@ python3 manage.py runserver 0.0.0.0:8765
 3. **Holdings → upload the CAS PDF** from mfcentral.com. This brings in MF holdings plus every SIP and redemption.
 4. **Month-end entry**: Zerodha and MF values and "invested" amounts come pre-filled. Type the bank and FD balances and save.
 
+## Loans
+**Loans** page (`g o`): every loan with owner (Saurabh, Pritika or **Joint**), lender, fixed or floating, amount, start date, tenure and EMI.
+- **Rate history**: each change with its effective date. Optionally record the new EMI; otherwise the EMI stays and the tenure adjusts, as banks do for floating loans.
+- **Prepayments**: each one reduces either the tenure or the EMI. The page shows interest and months saved compared with no prepayments.
+- **Bank-reported balances**: the schedule re-anchors to the bank's outstanding from that date.
+- **Full amortisation schedule** plus totals per financial year (interest and principal for tax), outstanding, % repaid, interest paid and to come, payoff date.
+- EMIs found in bank statements (via each loan's keyword) are listed; a payment well above the EMI can be recorded as a prepayment in one click.
+- The month-end form pre-fills each loan's outstanding from its schedule; the FI maths uses each loan's current rate and EMI.
+
 ## Bank & credit-card statements
 **Statements** page: upload CSV, Excel or (password-protected) PDF statements for any bank account or card. Add cards there first.
 - CSV/Excel is parsed on the Mac. PDFs (and odd exports) are read by Claude (`claude-haiku-5-5`), checked against the statement's printed totals, and re-read with `claude-sonnet-5-5` if they don't reconcile.

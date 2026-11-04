@@ -93,7 +93,7 @@ def apply_rule(txn, rule):
 
 
 def family_names():
-    return [p.name.upper() for p in Person.objects.all()]
+    return [p.name.upper() for p in Person.objects.people()]
 
 
 STOPWORDS = {"UPI", "DR", "CR", "NEFT", "IMPS", "RTGS", "POS", "ECOM", "TO", "BY", "FROM", "TRANSFER", "PAYMENT",

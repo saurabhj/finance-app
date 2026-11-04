@@ -12,14 +12,23 @@ class AssetClass(models.TextChoices):
     LIABILITY = "liability", "Liability"
 
 
+class PersonQuerySet(models.QuerySet):
+    def people(self):
+        """Real people (excludes the 'Joint' owner used for jointly held accounts and loans)."""
+        return self.filter(is_joint=False)
+
+
 class Person(models.Model):
     name = models.CharField(max_length=50, unique=True)
     user = models.OneToOneField(
         "auth.User", null=True, blank=True, on_delete=models.SET_NULL
     )
+    is_joint = models.BooleanField(default=False, help_text="Owner for things held jointly by both of you.")
+
+    objects = PersonQuerySet.as_manager()
 
     class Meta:
-        ordering = ["id"]
+        ordering = ["is_joint", "id"]
 
     def __str__(self):
         return self.name
@@ -456,3 +465,79 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.date} {self.description[:40]} {self.amount}"
+
+
+# ------------------------------------------------------------------ loans
+
+class Loan(models.Model):
+    """Loan details behind a 'loan' Account. The Account's monthly Balance stays the official outstanding."""
+
+    class Type(models.TextChoices):
+        HOME = "home", "Home loan"
+        CAR = "car", "Car / auto loan"
+        PERSONAL = "personal", "Personal loan"
+        EDUCATION = "education", "Education loan"
+        OTHER = "other", "Other"
+
+    class RateType(models.TextChoices):
+        FLOATING = "floating", "Floating"
+        FIXED = "fixed", "Fixed"
+
+    account = models.OneToOneField(Account, on_delete=models.CASCADE, related_name="loan")
+    lender = models.CharField(max_length=80, blank=True)
+    loan_type = models.CharField(max_length=10, choices=Type.choices, default=Type.HOME)
+    rate_type = models.CharField(max_length=10, choices=RateType.choices, default=RateType.FLOATING)
+    principal = models.DecimalField(max_digits=14, decimal_places=2,
+                                    help_text="Amount borrowed (or today's outstanding if you start tracking mid-way)")
+    start_date = models.DateField(help_text="Disbursement date (or the date of the outstanding above)")
+    first_emi_date = models.DateField(null=True, blank=True, help_text="Defaults to one month after the start date")
+    tenure_months = models.PositiveIntegerField(help_text="Original tenure (or months remaining if starting mid-way)")
+    emi = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                              help_text="Starting EMI as per the bank; left blank it's calculated")
+    statement_keyword = models.CharField(max_length=80, blank=True,
+                                         help_text="Text that identifies this loan's EMIs in bank statements, e.g. 'Auto Loan XX78951'")
+    notes = models.TextField(blank=True)
+    closed = models.BooleanField(default=False)
+
+    def __str__(self):
+        return str(self.account)
+
+
+class LoanRate(models.Model):
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, related_name="rates")
+    effective_date = models.DateField()
+    rate = models.DecimalField(max_digits=6, decimal_places=4, help_text="Annual, e.g. 0.0760")
+    new_emi = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                                  help_text="If the bank changed the EMI with this rate change. Blank = EMI unchanged, tenure adjusts.")
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["effective_date", "id"]
+
+
+class LoanPrepayment(models.Model):
+    class Effect(models.TextChoices):
+        TENURE = "tenure", "Reduce tenure (EMI unchanged)"
+        EMI = "emi", "Reduce EMI (tenure unchanged)"
+
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, related_name="prepayments")
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    effect = models.CharField(max_length=10, choices=Effect.choices, default=Effect.TENURE)
+    transaction = models.ForeignKey("Transaction", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["date", "id"]
+
+
+class LoanCheckpoint(models.Model):
+    """Outstanding as reported by the bank; the schedule re-anchors to it."""
+
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, related_name="checkpoints")
+    date = models.DateField()
+    outstanding = models.DecimalField(max_digits=14, decimal_places=2)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["date", "id"]

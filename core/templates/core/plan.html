@@ -20,30 +20,11 @@
 
     <div class="col-lg-4"><div class="card h-100"><div class="card-body">
       <h6>Loans</h6>
-      {% for r in form.loan_rows %}
-        <div class="border rounded p-2 mb-2">
-          <div class="fw-semibold small mb-1">{{ r.loan.name }} <span class="text-muted fw-normal">· {{ r.loan.owner }}</span></div>
-          <div class="row g-2">
-            <div class="col-6">{% include "core/includes/field.html" with f=r.outstanding %}</div>
-            <div class="col-6">{% include "core/includes/field.html" with f=r.emi %}</div>
-            <div class="col-6">{% include "core/includes/field.html" with f=r.rate %}</div>
-            <div class="col-6">{% include "core/includes/field.html" with f=r.end %}</div>
-          </div>
-        </div>
-      {% endfor %}
-      <details {% if not form.loan_rows %}open{% endif %} class="mb-2">
-        <summary class="small">Add a loan</summary>
-        <div class="row g-2 mt-1">
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_name %}</div>
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_owner %}</div>
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_outstanding %}</div>
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_emi %}</div>
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_rate %}</div>
-          <div class="col-6">{% include "core/includes/field.html" with f=form.loan_end_date %}</div>
-        </div>
-      </details>
-      {% include "core/includes/field.html" with f=form.loan_backfill %}
-      <p class="form-text">Outstanding amounts are saved on the latest month-end entry and subtracted from net worth; update them each month in the month-end form. At FI, loans count as paid off, so their EMIs aren't treated as forever expenses.</p>
+      <table class="table table-sm mb-1">
+        {% for l in loans %}<tr><td>{% if l.loan %}<a href="{% url 'loan_detail' l.loan.pk %}">{{ l.name }}</a>{% else %}{{ l.name }} <a class="small" href="{% url 'loan_new' %}?account={{ l.id }}">add details</a>{% endif %}</td><td class="small text-muted">{{ l.owner }}</td><td class="num">{% if l.emi %}EMI {{ l.emi|floatformat:0 }}{% endif %}</td></tr>
+        {% empty %}<tr><td class="small text-muted">No loans.</td></tr>{% endfor %}
+      </table>
+      <p class="form-text">Loans, rate changes and prepayments are managed on the <a href="{% url 'loans' %}">Loans</a> page. For FI, loans count as paid off at crossover, so EMIs aren't treated as forever expenses.</p>
       <h6 class="mt-3">FI assumptions</h6>
       {% include "core/includes/field.html" with f=form.safe_withdrawal_rate %}
       {% include "core/includes/field.html" with f=form.inflation %}

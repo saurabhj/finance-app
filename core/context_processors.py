@@ -30,6 +30,7 @@ def nav(request):
         ("Money", [
             ("Month-end entry", "snapshot_new", "e", None),
             ("Holdings", "holdings", "h", None),
+            ("Loans", "loans", "o", None),
             ("Statements", "statements", "s", None),
             ("Review transactions", "statements_review", "r", unconfirmed or None),
             ("Spending", "spending", "p", None),
@@ -64,6 +65,7 @@ def nav(request):
         {"label": "Run monthly AI review", "post": reverse("review_run"), "data": {"cadence": "monthly"}},
         {"label": "Refresh mutual fund NAVs", "post": reverse("nav_refresh")},
         {"label": "Re-apply statement rules", "post": reverse("rules_reapply")},
+        {"label": "Add a loan", "url": reverse("loan_new")},
         {"label": "Upload a statement", "url": reverse("statements") + "#upload"},
         {"label": "Add a statement rule", "url": reverse("statements") + "#rules"},
         {"label": "Edit notes for Claude", "url": reverse("statements") + "#notes"},

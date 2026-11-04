@@ -19,7 +19,9 @@ def plan(request):
         services.save_plan(form.cleaned_data)
         messages.success(request, "Plan saved.")
         return redirect("fi")
-    return render(request, "core/plan.html", {"form": form})
+    from core.models import Account
+    loans = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True).select_related("owner")
+    return render(request, "core/plan.html", {"form": form, "loans": loans})
 
 
 @login_required

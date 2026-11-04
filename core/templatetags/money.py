@@ -69,3 +69,11 @@ def gain_pct(pos):
         return None
     cost = pos.avg_cost * pos.quantity
     return (pos.value - cost) / cost if cost else None
+
+
+@register.filter
+def rate(value):
+    """Interest rate with 2 decimals: 0.0735 -> 7.35%."""
+    if value is None:
+        return "—"
+    return f"{Decimal(value) * 100:.2f}%"
