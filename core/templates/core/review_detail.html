@@ -1,0 +1,15 @@
+{% extends "core/base.html" %}
+{% block head %}<style>.review-body table { font-size: .85rem; } .review-body td, .review-body th { padding: .3rem .5rem; border-top: 1px solid #dee2e6; vertical-align: top; }</style>{% endblock %}
+{% block content %}
+<a href="{% url 'reviews' %}" class="small">← All reviews</a>
+<h4 class="mt-2">{{ review.get_cadence_display }} review · {{ review.created_at|date:"j M Y" }}</h4>
+<p class="small text-muted">Model {{ review.model }}{% if review.usage %} · {{ review.usage.input_tokens }} in / {{ review.usage.output_tokens }} out tokens{% endif %}{% if review.error %} · <span class="text-danger">{{ review.error }}</span>{% endif %}</p>
+{% if review.question %}<p><strong>Q:</strong> {{ review.question }}</p>{% endif %}
+<div class="row g-3">
+  <div class="col-lg-7"><div class="card"><div class="card-body review-body">{{ html }}</div></div></div>
+  <div class="col-lg-5"><div class="card"><div class="card-body">
+    <h6>Track these</h6>
+    {% for rec in recs %}{% include "core/includes/rec_row.html" %}{% empty %}<p class="small text-muted mb-0">No actions from this review.</p>{% endfor %}
+  </div></div></div>
+</div>
+{% endblock %}

@@ -127,11 +127,26 @@ STATIC_URL = "static/"
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+# Gmail: create an app password (Google Account -> Security -> App passwords).
+if os.environ.get("EMAIL_HOST_USER"):
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": os.environ.get("EMAIL_HOST", "smtp.gmail.com"),
+                "port": int(os.environ.get("EMAIL_PORT", "587")),
+                "username": os.environ["EMAIL_HOST_USER"],
+                "password": os.environ.get("EMAIL_HOST_PASSWORD", ""),
+                "use_tls": True,
+                "timeout": 30,
+            },
+        },
+    }
+else:  # no SMTP configured: print emails to the console/log
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
+DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_HOST_USER") or "finance@localhost"
+REPORT_RECIPIENTS = [e.strip() for e in os.environ.get("REPORT_RECIPIENTS", "").split(",") if e.strip()]
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8765")
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"

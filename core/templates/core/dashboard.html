@@ -9,6 +9,13 @@
   <a class="btn btn-primary btn-sm" href="{% url 'snapshot_new' %}">+ Month-end entry</a>
 </div>
 
+{% if latest_review %}
+<div class="alert alert-light border d-flex justify-content-between align-items-center py-2">
+  <div><span class="small text-muted">{{ latest_review.get_cadence_display }} review, {{ latest_review.created_at|date:"j M" }}:</span>
+    <a href="{% url 'review_detail' latest_review.pk %}">{{ latest_review.output_json.headline }}</a></div>
+  {% if open_actions %}<a class="badge text-bg-primary text-decoration-none" href="{% url 'reviews' %}">{{ open_actions }} open action{{ open_actions|pluralize }}</a>{% endif %}
+</div>
+{% endif %}
 <div class="row row-cols-2 row-cols-lg-5 g-3 mb-4">
   {% include "core/includes/kpi.html" with label="Net worth" value=latest.net_worth|inr sub=latest.change|inr_signed|add:" vs last" %}
   {% if latest.market_gain is not None %}

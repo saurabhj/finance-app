@@ -141,6 +141,8 @@ class CashFlow(models.Model):
     )
     source = models.CharField(max_length=10, choices=Source.choices, default=Source.MANUAL)
     note = models.CharField(max_length=200, blank=True)
+    instrument = models.ForeignKey("Instrument", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="cash_flows", help_text="Fund this flow bought/sold (CAS).")
     external_id = models.CharField(
         max_length=100, null=True, blank=True, unique=True,
         help_text="Dedupe key for imported rows (ledger / CAS), so re-uploading is safe.",
@@ -304,6 +306,10 @@ class Review(models.Model):
     input_json = models.JSONField()
     output_markdown = models.TextField(blank=True)
     output_json = models.JSONField(null=True, blank=True)
+    question = models.TextField(blank=True, help_text="For ad-hoc 'Ask' reviews")
+    status = models.CharField(max_length=10, default="done")  # running / done / failed
+    error = models.TextField(blank=True)
+    usage = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

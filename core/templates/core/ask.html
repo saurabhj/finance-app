@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% block content %}
+<h4>Ask about your money</h4>
+<p class="small text-muted">Claude answers using the same snapshot of your data as the reviews. It takes up to a minute.</p>
+<form method="post" class="mb-3">{% csrf_token %}
+  <textarea name="question" rows="3" class="form-control mb-2" placeholder="e.g. Should we prepay the home loan with the cash in ICICI, or invest it?">{{ question }}</textarea>
+  <button class="btn btn-primary">Ask</button>
+</form>
+{% if answer %}<div class="card mb-4"><div class="card-body">{{ answer_html }}</div></div>{% endif %}
+{% if recent %}
+<h6>Previous questions</h6>
+<ul class="small">{% for r in recent %}<li><a href="{% url 'review_detail' r.pk %}">{{ r.question|truncatechars:100 }}</a> · {{ r.created_at|date:"j M" }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

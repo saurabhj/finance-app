@@ -31,6 +31,15 @@ Fill in the **Plan** page: rough monthly expenses, income and hours worked, the 
 - **Life energy**: real hourly wage and what a purchase costs in hours of work.
 - **Allocation vs. target**: drift per asset class and the amount needed to rebalance.
 
+## AI reviews
+Set `ANTHROPIC_API_KEY` in `.env` (and `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` / `REPORT_RECIPIENTS` for email).
+- **Weekly check** (Sunday 09:00, `claude-sonnet-5-5`): flags only urgent items, such as idle cash, drift outside bands, stale data, or a self-managed holding falling sharply.
+- **Monthly review** (3rd, 09:00, `claude-opus-5-5`, deep thinking): progress to FI, where new money should go, rebalancing, tax-aware ideas, an explicit **exit / reduce / hold / add** verdict with reasons for every *self-managed* holding (trailing returns vs Nifty 50, regular vs direct plan, tax cost of exiting), and strategy-level notes on advisor-managed groups.
+- **Ask**: free-form questions answered from the same data.
+- Each action can be marked done or dismissed with a note. The next review sees what you did.
+- Preview exactly what is sent to Claude, without calling it: `python3 manage.py run_review --cadence monthly --dry-run`.
+- Month-end reminder email on the 1st (`send_reminder`).
+
 ## Zerodha (Kite Connect)
 Create one app per Zerodha login at developers.kite.trade. Set its redirect URL to `http://<host>:8765/zerodha/callback/`, then put the key and secret in `.env` as `KITE_API_KEY_SAURABH`, `KITE_API_SECRET_SAURABH` (and the same for `PRITIKA`). Access is read-only; the app never places orders.
 
@@ -38,6 +47,9 @@ Create one app per Zerodha login at developers.kite.trade. Set its redirect URL 
 Copy `ops/launchd/*.plist` to `~/Library/LaunchAgents/` and load each one with `launchctl load`.
 - `com.family.finance.backup`: 02:30 nightly. Integrity-checked SQLite backup, compressed and encrypted with `age` when `BACKUP_AGE_RECIPIENT` is set, written to `BACKUP_DIR` (a Google Drive or Dropbox folder). Keeps 30 daily and 12 monthly copies. Restore with `ops/restore.sh <file>`.
 - `com.family.finance.nav`: 23:15 daily. AMFI NAVs, used to revalue mutual funds between CAS statements.
+- `com.family.finance.reminder`: 1st of the month, 08:00. Month-end update reminder email.
+- `com.family.finance.review-weekly`: Sundays, 09:00. Weekly AI check.
+- `com.family.finance.review-monthly`: 3rd of the month, 09:00. Monthly AI review.
 
 ## Tests
 ```bash

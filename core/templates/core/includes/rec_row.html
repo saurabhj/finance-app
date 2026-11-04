@@ -1,0 +1,21 @@
+{% load money %}
+<div class="border-top py-2">
+  <div class="d-flex justify-content-between">
+    <div>
+      <span class="badge {% if rec.verdict == 'exit' %}text-bg-danger{% elif rec.verdict == 'reduce' %}text-bg-warning{% elif rec.verdict == 'add' %}text-bg-success{% elif rec.verdict == 'hold' %}text-bg-light{% else %}text-bg-primary{% endif %}">{{ rec.get_verdict_display }}</span>
+      <strong>{{ rec.title }}</strong>{% if rec.amount %} · {{ rec.amount|inr }}{% endif %}
+      {% if rec.urgency == "high" %}<span class="badge text-bg-danger">urgent</span>{% endif %}
+      {% if show_date %}<span class="small text-muted"> · {{ rec.review.created_at|date:"j M" }}</span>{% endif %}
+    </div>
+    <span class="small text-muted">{{ rec.get_status_display }}{% if rec.status_note %}: {{ rec.status_note }}{% endif %}</span>
+  </div>
+  <div class="small mt-1">{{ rec.rationale|linebreaksbr }}</div>
+  {% if rec.status == "open" %}
+  <form method="post" action="{% url 'recommendation_update' rec.pk %}" class="d-flex gap-2 mt-1">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <input name="note" class="form-control form-control-sm" placeholder="Note (optional): what you did or why not" style="max-width: 360px">
+    <button name="status" value="done" class="btn btn-sm btn-outline-success">Done</button>
+    <button name="status" value="dismissed" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+  </form>
+  {% endif %}
+</div>

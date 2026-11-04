@@ -125,6 +125,7 @@ def _flow(account, folio, inst, t):
     _, made = CashFlow.objects.get_or_create(
         external_id=f"cas:{key}",
         defaults=dict(date=date, account=account, amount=signed, kind=kind, source=CashFlow.Source.CAS,
+                      instrument=inst,
                       note=f"{ttype.title().replace('_', ' ')}: {inst.name[:120]}"),
     )
     return made

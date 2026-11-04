@@ -1,0 +1,32 @@
+{% extends "core/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-baseline mb-3">
+  <h4 class="mb-0">AI reviews</h4>
+  <form method="post" action="{% url 'review_run' %}" class="d-flex gap-2">{% csrf_token %}
+    <button name="cadence" value="weekly" class="btn btn-sm btn-outline-primary" {% if running or not has_key %}disabled{% endif %}>Run weekly check</button>
+    <button name="cadence" value="monthly" class="btn btn-sm btn-primary" {% if running or not has_key %}disabled{% endif %}>Run monthly review</button>
+  </form>
+</div>
+{% if not has_key %}<div class="alert alert-warning py-2">Add <code>ANTHROPIC_API_KEY</code> to <code>.env</code> and restart the app to enable reviews.</div>{% endif %}
+{% if running %}<div class="alert alert-info py-2">A review is running… refresh in a minute.</div>{% endif %}
+<p class="small text-muted">Scheduled: weekly light check every Sunday (Sonnet), full monthly review on the 3rd (Opus, with deep thinking). Exit / hold / add calls are made only for <em>self-managed</em> holdings; advisor-managed ones are reviewed at strategy level.</p>
+
+<div class="row g-3">
+  <div class="col-lg-7"><div class="card"><div class="card-body">
+    <h6>Open actions</h6>
+    {% for rec in open_recs %}{% include "core/includes/rec_row.html" with show_date=True %}{% empty %}<p class="small text-muted mb-0">No open actions.</p>{% endfor %}
+  </div></div></div>
+  <div class="col-lg-5"><div class="card"><div class="card-body">
+    <h6>History</h6>
+    <table class="table table-sm mb-0">
+      {% for r in reviews %}
+      <tr>
+        <td class="small">{{ r.created_at|date:"j M Y H:i" }}</td>
+        <td class="small">{{ r.get_cadence_display }}</td>
+        <td class="small">{% if r.status == "done" %}<a href="{% url 'review_detail' r.pk %}">{{ r.output_json.headline|default:r.question|truncatechars:70 }}</a>{% elif r.status == "failed" %}<span class="text-danger">Failed: {{ r.error|truncatechars:80 }}</span>{% else %}Running…{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td class="small text-muted">No reviews yet.</td></tr>{% endfor %}
+    </table>
+  </div></div></div>
+</div>
+{% endblock %}

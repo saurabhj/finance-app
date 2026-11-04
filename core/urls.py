@@ -27,3 +27,13 @@ urlpatterns += [
     path("fi/", fi_views.fi, name="fi"),
     path("plan/", fi_views.plan, name="plan"),
 ]
+
+from ai import views as ai_views  # noqa: E402
+
+urlpatterns += [
+    path("reviews/", ai_views.reviews, name="reviews"),
+    path("reviews/run/", ai_views.review_run, name="review_run"),
+    path("reviews/<int:pk>/", ai_views.review_detail, name="review_detail"),
+    path("recommendations/<int:pk>/", ai_views.recommendation_update, name="recommendation_update"),
+    path("ask/", ai_views.ask, name="ask"),
+]

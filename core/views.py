@@ -38,7 +38,10 @@ def dashboard(request):
     alloc = analytics.allocation(latest.snapshot) if latest else []
     chart["alloc_labels"] = [a["label"] for a in alloc]
     chart["alloc_values"] = [_f(a["value"]) for a in alloc]
+    from .models import Recommendation, Review
     ctx = {
+        "latest_review": Review.objects.filter(status="done").exclude(cadence="adhoc").first(),
+        "open_actions": Recommendation.objects.filter(status="open").exclude(verdict="hold").count(),
         "latest": latest,
         "periods": list(reversed(periods)),
         "allocation": alloc,
