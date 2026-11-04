@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block content %}
+<h4>Money moved</h4>
+<p class="text-muted small">Detailed record of money put into or taken out of investments. The month-end form keeps a running total per account; record individual transfers here if you prefer. Later, Zerodha pay-ins and CAS purchases will fill this in automatically.</p>
+<div class="row g-3">
+  <div class="col-lg-4"><div class="card"><div class="card-body">
+    <h6>Add</h6>
+    <form method="post">{% csrf_token %}
+      {% for f in form %}
+        <div class="mb-2"><label class="form-label small mb-0">{{ f.label }}</label>{{ f.errors }}{{ f }}
+        {% if f.help_text %}<div class="form-text">{{ f.help_text }}</div>{% endif %}</div>
+      {% endfor %}
+      <button class="btn btn-primary btn-sm">Save</button>
+    </form>
+  </div></div></div>
+  <div class="col-lg-8"><div class="card"><div class="card-body">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Date</th><th>Account</th><th class="num">Amount</th><th>Type</th><th>From</th><th>Note</th><th></th></tr></thead>
+      {% for f in flows %}
+      <tr>
+        <td>{{ f.date|date:"j M Y" }}</td><td>{{ f.account }}</td>
+        <td class="num {{ f.amount|tone }}">{{ f.amount|inr_signed }}</td>
+        <td>{{ f.get_kind_display }}</td><td class="small">{{ f.from_account.name|default:"" }}</td>
+        <td class="small text-muted">{{ f.note }}</td>
+        <td><form method="post" action="{% url 'cashflow_delete' f.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm text-danger p-0">×</button></form></td>
+      </tr>
+      {% empty %}<tr><td colspan="7" class="text-muted">Nothing recorded yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div></div></div>
+</div>
+{% endblock %}

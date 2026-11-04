@@ -1,0 +1,32 @@
+{% load money %}
+<div class="card mb-3"><div class="card-body">
+  <div class="d-flex justify-content-between align-items-baseline">
+    <h6 class="mb-1">{{ b.account }}</h6>
+    <div class="small text-muted">
+      {{ b.pull.get_source_display }} as of {{ b.pull.as_of|date:"j M Y" }} · {{ b.pull.total_value|inr }}
+      {% if b.current_value != b.pull.total_value %} · at latest NAV {{ b.current_value|inr }}{% endif %}
+      · XIRR {% if b.xirr is not None %}{{ b.xirr|pct }}{% else %}needs a tracked month{% endif %}
+    </div>
+  </div>
+  <div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Holding</th><th>Class</th><th class="num">Value</th><th class="num">% of acct</th><th class="num">vs cost</th><th>Managed by</th><th>Advisor / note</th></tr></thead>
+    {% for pos in b.positions %}{% with inst=pos.instrument %}
+    <tr {% if inst.needs_review %}class="table-warning"{% endif %}>
+      <td>{{ inst.name|truncatechars:48 }}<div class="small text-muted">{{ inst.get_kind_display }}{% if inst.is_passive %} · passive{% endif %}</div></td>
+      <td class="small">{{ inst.get_asset_class_display }}</td>
+      <td class="num">{{ pos.value|inr }}</td>
+      <td class="num text-muted">{{ pos.value|ratio:b.pull.total_value|pct_plain }}</td>
+      <td class="num {{ pos|gain_pct|tone }}">{{ pos|gain_pct|pct }}</td>
+      <td>
+        <input type="hidden" name="instrument" value="{{ inst.id }}">
+        <select name="mgmt_{{ inst.id }}" class="form-select form-select-sm">
+          {% for val, label in management_choices %}<option value="{{ val }}" {% if inst.management == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </td>
+      <td><input name="advisor_{{ inst.id }}" value="{{ inst.advisor }}" class="form-control form-control-sm"></td>
+    </tr>
+    {% endwith %}{% endfor %}
+  </table>
+  </div>
+</div></div>

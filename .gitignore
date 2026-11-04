@@ -1,0 +1,10 @@
+venv/
+data/
+.env
+__pycache__/
+*.pyc
+backups/
+docs/*.xlsx
+docs/*.pdf
+*.sqlite3
+*.csv

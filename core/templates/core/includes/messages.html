@@ -1,0 +1,3 @@
+{% for m in messages %}
+<div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags|default:'info' }}{% endif %} py-2">{{ m }}</div>
+{% endfor %}
