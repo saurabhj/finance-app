@@ -162,6 +162,14 @@ DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_HOST_USER") or "finance@localhost"
 REPORT_RECIPIENTS = [e.strip() for e in os.environ.get("REPORT_RECIPIENTS", "").split(",") if e.strip()]
 APP_BASE_URL = os.environ.get("APP_BASE_URL") or "http://localhost:8765"
 
+# Behind `tailscale serve` (HTTPS on the tailnet, proxied to gunicorn on localhost)
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in (os.environ.get("CSRF_TRUSTED_ORIGINS") or APP_BASE_URL).split(",") if o.strip()]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+if APP_BASE_URL.startswith("https://"):
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # stay signed in for a month on your own devices
+
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"

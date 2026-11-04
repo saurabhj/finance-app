@@ -2,18 +2,60 @@
 
 A personal finance app for Saurabh and Pritika. It tracks net worth across banks, FDs, Zerodha (Smallcase / Weekend Investing, SGB, GOLDBEES) and mutual funds (ET Money index funds and older active funds). It separates **money invested** from **real market gain** each month and, in later phases, runs AI reviews against the *Your Money or Your Life* financial-independence plan.
 
-Runs on the Mac mini as Django + SQLite and is reached over Tailscale.
+Runs on the Mac mini as Django + SQLite (gunicorn, launchd) and is reached over Tailscale.
 
-## Setup
+## Running on the Mac mini
+The web app runs under gunicorn on `127.0.0.1:8765`, and Tailscale publishes it to your devices over HTTPS (tailnet only, nothing exposed to the internet). `ops/install.sh` sets up every background service for wherever the project folder lives.
+
+**On the laptop (the current copy):**
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+cd /path/to/finance-app
+sqlite3 data/finance.sqlite3 ".backup data/finance-transfer.sqlite3"   # consistent copy (WAL mode)
+```
+Copy three things to the Mac mini: `data/finance-transfer.sqlite3`, `.env`, and (optional) `docs/` with your statements. Use AirDrop or a USB stick, not a cloud folder. Don't copy `venv/`.
+
+**On the Mac mini:**
+```bash
+xcode-select --install                       # git, if not present
+brew install python@3.12 sqlite age          # or python.org 3.12
+git clone git@github.com:saurabhj/finance-app.git ~/finance-app
+cd ~/finance-app
+python3.12 -m venv venv && source venv/bin/activate
 python3 -m pip install -r requirements.txt
-cp .env.example .env          # fill in keys
+mkdir -p data && mv ~/Downloads/finance-transfer.sqlite3 data/finance.sqlite3
+mv ~/Downloads/.env .env                     # then edit it, see below
 python3 manage.py migrate
-python3 manage.py createsuperuser
-python3 manage.py import_sheet docs/net_worth.xlsx   # one-time history import (file not in git)
-python3 manage.py runserver 0.0.0.0:8765
+python3 manage.py test                       # should be all OK
+python3 manage.py createsuperuser            # one login each for you and Pritika
+ops/install.sh                               # web server + all scheduled jobs
+tailscale serve --bg 8765                    # HTTPS on https://<mini>.<tailnet>.ts.net
+```
+In `.env` on the mini:
+- `APP_BASE_URL=https://<mini-name>.<tailnet>.ts.net` (as shown by `tailscale serve status`)
+- `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.ts.net`
+- `BACKUP_DIR=` a Google Drive / Dropbox synced folder; `BACKUP_AGE_RECIPIENT=` your age public key (`age-keygen -o ~/.age/finance.key`; keep that key file safe, it's the only way to restore)
+- Kite apps: change their redirect URL to `https://<mini>.<tailnet>.ts.net/zerodha/callback/`
+
+Then in the app: Settings → Users, delete the temporary `demo` login. System Settings → Energy: "Prevent automatic sleeping" so the 2:30 backup and 9:00 reviews run.
+
+**Updating later:** `git pull && source venv/bin/activate && python3 -m pip install -r requirements.txt && ops/install.sh` (restarts the server; migrations run on start).
+
+**Services** (`ops/install.sh --uninstall` removes them; logs in `data/logs/`):
+| Service | When |
+|---|---|
+| `web` | always on (restarts if it stops) |
+| `backup` | 02:30 daily: integrity-checked, encrypted SQLite backup to `BACKUP_DIR`, 30 daily + 12 monthly kept; restore with `ops/restore.sh <file>` |
+| `nav` | 23:15 daily: mutual-fund NAVs from AMFI |
+| `reminder` | 1st, 08:00: month-end update email |
+| `review-weekly` | Sundays 09:00: weekly AI check |
+| `review-monthly` | 3rd, 09:00: monthly AI review |
+
+## Development (laptop)
+```bash
+python3 -m venv venv && source venv/bin/activate
+python3 -m pip install -r requirements.txt
+cp .env.example .env && python3 manage.py migrate
+python3 manage.py runserver 8765
 ```
 
 ## Monthly routine
@@ -61,14 +103,6 @@ Set `ANTHROPIC_API_KEY` in `.env` (and `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD`
 
 ## Zerodha (Kite Connect)
 Create one app per Zerodha login at developers.kite.trade. Set its redirect URL to `http://<host>:8765/zerodha/callback/`, then put the key and secret in `.env` as `KITE_API_KEY_SAURABH`, `KITE_API_SECRET_SAURABH` (and the same for `PRITIKA`). Access is read-only; the app never places orders.
-
-## Scheduled jobs (launchd)
-Copy `ops/launchd/*.plist` to `~/Library/LaunchAgents/` and load each one with `launchctl load`.
-- `com.family.finance.backup`: 02:30 nightly. Integrity-checked SQLite backup, compressed and encrypted with `age` when `BACKUP_AGE_RECIPIENT` is set, written to `BACKUP_DIR` (a Google Drive or Dropbox folder). Keeps 30 daily and 12 monthly copies. Restore with `ops/restore.sh <file>`.
-- `com.family.finance.nav`: 23:15 daily. AMFI NAVs, used to revalue mutual funds between CAS statements.
-- `com.family.finance.reminder`: 1st of the month, 08:00. Month-end update reminder email.
-- `com.family.finance.review-weekly`: Sundays, 09:00. Weekly AI check.
-- `com.family.finance.review-monthly`: 3rd of the month, 09:00. Monthly AI review.
 
 ## Tests
 ```bash
