@@ -63,6 +63,10 @@ class Account(models.Model):
     )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+    match_hints = models.CharField(
+        max_length=200, blank=True,
+        help_text="Account / card numbers that appear on its statements, comma-separated (full number or last 4-5 digits). Used to sort bulk uploads.",
+    )
     # Loans only
     emi = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     interest_rate = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True,
@@ -541,3 +545,43 @@ class LoanCheckpoint(models.Model):
 
     class Meta:
         ordering = ["date", "id"]
+
+
+class UploadBatch(models.Model):
+    """A bulk statement upload processed in the background."""
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=12, default="queued")  # queued / running / done
+    passwords = models.TextField(blank=True, help_text="One per line; wiped when the batch finishes")
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def counts(self):
+        from collections import Counter
+        return Counter(self.items.values_list("status", flat=True))
+
+
+class UploadItem(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        NEEDS_ACCOUNT = "needs_account", "Needs account"
+        PROCESSING = "processing", "Reading…"
+        DONE = "done", "Imported"
+        DUPLICATE = "duplicate", "Already uploaded"
+        FAILED = "failed", "Failed"
+
+    batch = models.ForeignKey(UploadBatch, on_delete=models.CASCADE, related_name="items")
+    filename = models.CharField(max_length=255)
+    path = models.CharField(max_length=500, help_text="Temporary copy under data/uploads (deleted after import)")
+    sha256 = models.CharField(max_length=64)
+    account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.SET_NULL)
+    detected_by = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.QUEUED)
+    message = models.TextField(blank=True)
+    statement = models.ForeignKey(StatementUpload, null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        ordering = ["id"]

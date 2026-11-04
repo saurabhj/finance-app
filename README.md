@@ -32,7 +32,7 @@ python3 manage.py runserver 0.0.0.0:8765
 - The month-end form pre-fills each loan's outstanding from its schedule; the FI maths uses each loan's current rate and EMI.
 
 ## Bank & credit-card statements
-**Statements** page: upload CSV, Excel or (password-protected) PDF statements for any bank account or card. Add cards there first.
+**Statements** page: bulk-upload any number of CSV, Excel, PDF (password-protected is fine) or ZIP files across all banks and cards at once. Each file is matched to its account by the account/card number you enter once under *Accounts*; unmatched files wait for you to pick. Files are processed by a background worker (PDFs read three at a time) with a live progress page. For a big backfill: `python3 manage.py import_folder ~/statements --passwords-file pw.txt`.
 - CSV/Excel is parsed on the Mac. PDFs (and odd exports) are read by Claude (`claude-haiku-5-5`), checked against the statement's printed totals, and re-read with `claude-sonnet-5-5` if they don't reconcile.
 - Built-in keyword rules catch TO ZERODHA, ET MONEY / ICCL, FD bookings, card bill payments (CRED, "payment received"), home-loan EMIs, salary, interest and common merchants. Claude guesses the rest.
 - Transfers between your own or each other's accounts, and card payments vs. card statements, are paired automatically so they aren't counted as spending.

@@ -302,8 +302,15 @@ class PageTests(Setup):
 
     def test_upload_review_remember_confirm(self):
         f = SimpleUploadedFile("hdfc.csv", HDFC_CSV.replace("SWIGGY-SWIGGY@ICICI", "BLUETOKAI-BT@ICICI").encode())
-        r = self.client.post("/statements/upload/", {"account": self.bank.id, "files": [f]})
-        self.assertRedirects(r, "/statements/review/")
+        from unittest import mock
+        from statements import batch as batches
+        batches.READERS = 1
+        with mock.patch.object(batches, "start_worker"):
+            r = self.client.post("/statements/upload/", {"account": self.bank.id, "files": [f]})
+        from core.models import UploadBatch
+        b = UploadBatch.objects.get()
+        self.assertRedirects(r, f"/statements/batches/{b.pk}/")
+        batches.process(b)  # no API key in tests: unknown merchants stay uncategorised
         page = self.client.get("/statements/review/")
         self.assertContains(page, "BLUETOKAI")
         t = Transaction.objects.get(description__contains="BLUETOKAI")
@@ -342,3 +349,130 @@ class ZerodhaSettlementTests(Setup):
         zerodha_ledger.import_ledger(self.zer, ledger)
         flows = sorted(CashFlow.objects.filter(account=self.zer).values_list("source", "amount"))
         self.assertEqual(flows, [("kite", D("-13264.88")), ("kite", D("25000"))])  # net invested 11,735.12
+
+
+# ------------------------------------------------------------------ bulk uploads
+import tempfile  # noqa: E402
+import zipfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest import mock  # noqa: E402
+
+from django.core.management import call_command  # noqa: E402
+from django.test import override_settings  # noqa: E402
+
+from core.models import UploadBatch, UploadItem  # noqa: E402
+
+from . import batch as batches  # noqa: E402
+from . import detect  # noqa: E402
+
+BANK_WITH_NUMBER = "Account No :11112222333344\n" + HDFC_CSV.split("\n", 3)[3]
+CARD_WITH_NUMBER = "Card No: 4111 11XX XXXX 5150\n" + CARD_CSV
+
+
+class DetectTests(Setup):
+    def setUp(self):
+        super().setUp()
+        self.bank.match_hints = "11112222333344"
+        self.bank.save()
+        self.card.match_hints = "5150"
+        self.card.save()
+
+    def test_detects_by_number_and_prefers_longest(self):
+        acc, why = detect.detect("b.csv", (BANK_WITH_NUMBER + "01/10/26,CC 0004111XXXXXX5150 AUTOPAY,1,,1,\n").encode())
+        self.assertEqual(acc, self.bank)  # the card number in a narration doesn't win
+        self.assertEqual(detect.detect("c.csv", CARD_WITH_NUMBER.encode())[0], self.card)
+
+    def test_amounts_dont_match_card_digits(self):
+        acc, why = detect.detect("x.csv", b"Date,Details,Amount\n01/10/2026,SHOP,15150.00\n02/10/2026,SHOP,5150.50\n")
+        self.assertIsNone(acc)
+
+    def test_ambiguous(self):
+        self.pbank.match_hints = "5150"
+        self.pbank.save()
+        acc, why = detect.detect("c.csv", CARD_WITH_NUMBER.encode())
+        self.assertIsNone(acc)
+        self.assertIn("more than one", why)
+
+
+@override_settings(BASE_DIR=Path(tempfile.mkdtemp()))
+class BatchTests(Setup):
+    def setUp(self):
+        super().setUp()
+        batches.UPLOAD_ROOT = Path(tempfile.mkdtemp())
+        batches.READERS = 1  # the in-memory test database can't be shared across threads
+        self.bank.match_hints, self.card.match_hints = "11112222333344", "5150"
+        self.bank.save()
+        self.card.save()
+
+    def zip_of(self, files):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            for name, text in files:
+                z.writestr(name, text)
+        return buf.getvalue()
+
+    def test_zip_batch_detects_imports_and_flags_unknown(self):
+        z = self.zip_of([("hdfc_oct.csv", BANK_WITH_NUMBER), ("card_oct.csv", CARD_WITH_NUMBER),
+                         ("mystery.csv", "Date,Narration,Debit,Credit\n01/10/26,X,1,\n"), ("__MACOSX/._junk.csv", "x")])
+        b = batches.create_batch([("statements.zip", z)], passwords="secret")
+        self.assertEqual(b.items.count(), 3)
+        self.assertEqual(b.items.filter(status="needs_account").count(), 1)
+        batches.process(b, client=NoClaude())
+        b.refresh_from_db()
+        self.assertEqual(dict(b.counts()), {"done": 2, "needs_account": 1})
+        self.assertEqual(b.status, "waiting")
+        self.assertEqual(b.passwords, "secret")  # kept until every file is dealt with
+        self.assertEqual(Transaction.objects.filter(account=self.bank).count(), 8)
+        # card payment pairs across files in the same batch
+        self.assertTrue(Transaction.objects.filter(category="card_payment", matched_with__isnull=False).exists())
+        # imported files are deleted from disk
+        self.assertFalse(any(Path(i.path).exists() for i in b.items.filter(status="done")))
+
+    def test_assign_account_via_page_remembers_number(self):
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+        b = batches.create_batch([("unknown.csv", b"Acct 99887766\nDate,Narration,Debit,Credit\n01/10/26,X,1,\n")])
+        item = b.items.get()
+        with mock.patch.object(batches, "start_worker") as start:
+            self.client.post(f"/statements/batches/{b.pk}/assign/", {
+                f"account_{item.id}": self.pbank.id, f"remember_{item.id}": "on", f"hint_{item.id}": "99887766"})
+            start.assert_called_once()
+        batches.process(b, client=FakeClaude({"items": []}))
+        b.refresh_from_db()
+        self.assertEqual((b.status, b.passwords), ("done", ""))
+        self.pbank.refresh_from_db()
+        self.assertEqual(self.pbank.match_hints, "99887766")
+        self.assertContains(self.client.get(f"/statements/batches/{b.pk}/"), "Imported")
+
+    def test_duplicate_file_and_forced_account(self):
+        self.imp(self.bank, "a.csv", HDFC_CSV)
+        b = batches.create_batch([("a.csv", HDFC_CSV.encode()), ("b.csv", CARD_CSV.encode())], account=self.card)
+        self.assertEqual(sorted(b.items.values_list("status", flat=True)), ["duplicate", "queued"])
+        self.assertEqual(b.items.get(status="queued").account, self.card)
+
+    def test_pdf_passwords_tried_in_turn(self):
+        b = batches.create_batch([("amex.pdf", blank_pdf("pw2"))], passwords="pw1\npw2", account=self.card)
+        batches.process(b, client=FakeClaude(extraction(2000)))
+        item = b.items.get()
+        self.assertEqual(item.status, "done", item.message)
+
+    def test_upload_view_starts_worker(self):
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+        f = SimpleUploadedFile("hdfc.csv", BANK_WITH_NUMBER.encode())
+        with mock.patch.object(batches, "start_worker") as start:
+            r = self.client.post("/statements/upload/", {"files": [f]})
+        b = UploadBatch.objects.get()
+        self.assertRedirects(r, f"/statements/batches/{b.pk}/")
+        start.assert_called_once()
+        self.assertEqual(b.items.get().account, self.bank)
+
+    def test_import_folder_command(self):
+        folder = Path(tempfile.mkdtemp())
+        (folder / "hdfc.csv").write_text(BANK_WITH_NUMBER)
+        (folder / "notes.txt").write_text("ignore me")
+        out = io.StringIO()
+        with mock.patch("statements.importer.parse_ai.categorize", return_value={}):
+            call_command("import_folder", str(folder), stdout=out)
+        self.assertIn("Imported", out.getvalue())
+        self.assertEqual(UploadItem.objects.get().status, "done")

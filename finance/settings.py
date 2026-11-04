@@ -91,6 +91,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.environ.get("DB_PATH", BASE_DIR / "data" / "finance.sqlite3"),
+        # WAL lets the web app keep reading while the background upload worker writes
+        "OPTIONS": {"init_command": "PRAGMA journal_mode=WAL;", "transaction_mode": "IMMEDIATE", "timeout": 30},
     }
 }
 

@@ -105,11 +105,12 @@ def reapply_rules():
 
 
 @db_tx.atomic
-def import_statement(account, name, data, password="", client=None):
+def import_statement(account, name, data, password="", client=None, pre_read=None):
+    """pre_read: the result of read() done earlier (e.g. in a worker thread)."""
     sha = hashlib.sha256(data).hexdigest()
     if StatementUpload.objects.filter(account=account, sha256=sha).exists():
         raise ImportError_("This exact file was already uploaded for this account.")
-    rows, parser, warning, (p_start, p_end) = read(account, name, data, password, client)
+    rows, parser, warning, (p_start, p_end) = pre_read or read(account, name, data, password, client)
     if not rows:
         raise ImportError_("No transactions found in that file.")
     dates = [r["date"] for r in rows]

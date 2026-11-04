@@ -6,12 +6,14 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction as db_tx
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ai.review import ReviewError
 from core.models import (Account, AssetClass, Category, CategoryRule, Household, SpendCategory, StatementUpload,
-                         Transaction)
+                         Transaction, UploadBatch)
 
+from . import batch as batches
 from . import importer, matching, rules, spending
 
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -20,7 +22,7 @@ MAX_UPLOAD = 25 * 1024 * 1024
 class AccountForm(forms.ModelForm):
     class Meta:
         model = Account
-        fields = ["owner", "name", "institution", "kind"]
+        fields = ["owner", "name", "institution", "kind", "match_hints"]
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
@@ -64,6 +66,7 @@ def home(request):
         "uploads": StatementUpload.objects.select_related("account__owner")[:40],
         "unconfirmed": Transaction.objects.filter(confirmed=False).count(),
         "user_rules": CategoryRule.objects.filter(is_builtin=False).select_related("target_account"),
+        "batches": UploadBatch.objects.all()[:8],
         "account_form": AccountForm(),
         "rule_form": RuleForm(),
         "notes": Household.get().categorization_notes,
@@ -118,27 +121,80 @@ def add_account(request):
 @login_required
 @require_POST
 def upload(request):
-    account = get_object_or_404(Account, pk=request.POST.get("account"), kind__in=["bank", "card"])
+    """Bulk upload: any number of files (or ZIPs) across accounts, processed in the background."""
     files = request.FILES.getlist("files")
     if not files:
         messages.error(request, "Choose at least one file.")
         return redirect("statements")
-    for f in files:
-        if f.size > MAX_UPLOAD:
-            messages.error(request, f"{f.name}: larger than 25 MB.")
-            continue
-        try:
-            stmt = importer.import_statement(account, f.name, f.read(), request.POST.get("password", ""))
-        except (importer.ImportError_, ValueError, ReviewError) as e:
-            messages.error(request, f"{f.name}: {e}")
-            continue
-        msg = f"{f.name}: {stmt.added} transactions added"
-        if stmt.duplicates:
-            msg += f", {stmt.duplicates} already known"
-        messages.success(request, msg + ".")
-        if stmt.warning:
-            messages.warning(request, f"{f.name}: {stmt.warning}")
-    return redirect("statements_review")
+    too_big = [f.name for f in files if f.size > MAX_UPLOAD]
+    if too_big:
+        messages.error(request, "Larger than 25 MB, skipped: " + ", ".join(too_big))
+    account = None
+    if request.POST.get("account"):
+        account = get_object_or_404(Account, pk=request.POST["account"], kind__in=["bank", "card"])
+    b = batches.create_batch(((f.name, f.read()) for f in files if f.size <= MAX_UPLOAD),
+                             request.POST.get("passwords", ""), account)
+    if not b.items.exists():
+        messages.error(request, "No statement files found (PDF, CSV, XLS, XLSX or ZIP).")
+        b.delete()
+        return redirect("statements")
+    if b.items.filter(status="queued", account__isnull=False).exists():
+        batches.start_worker(b)
+    else:
+        batches.finish(b)
+    return redirect("statement_batch", pk=b.pk)
+
+
+@login_required
+def batch_detail(request, pk):
+    b = get_object_or_404(UploadBatch, pk=pk)
+    items = b.items.select_related("account__owner", "statement")
+    active = items.filter(status__in=["queued", "processing"], account__isnull=False).exists()
+    return render(request, "core/statement_batch.html", {
+        "batch": b, "items": items, "counts": b.counts(), "active": active,
+        "accounts": _statement_accounts(),
+    })
+
+
+@login_required
+@require_POST
+def batch_assign(request, pk):
+    """Assign accounts to files that couldn't be matched, then process them."""
+    b = get_object_or_404(UploadBatch, pk=pk)
+    assigned = 0
+    for item in b.items.filter(status="needs_account"):
+        acc_id = request.POST.get(f"account_{item.id}")
+        if acc_id:
+            item.account = get_object_or_404(Account, pk=acc_id, kind__in=["bank", "card"])
+            item.status, item.detected_by, item.message = "queued", "chosen by you", ""
+            item.save()
+            assigned += 1
+            if request.POST.get(f"remember_{item.id}") and request.POST.get(f"hint_{item.id}", "").strip():
+                hint = request.POST[f"hint_{item.id}"].strip()
+                acc = item.account
+                acc.match_hints = ", ".join(h for h in [acc.match_hints, hint] if h)
+                acc.save(update_fields=["match_hints"])
+    if request.POST.get("skip_rest"):
+        b.items.filter(status="needs_account").update(status="failed", message="Skipped")
+    if assigned:
+        b.status = "running"
+        b.save(update_fields=["status"])
+        batches.start_worker(b)
+    else:
+        batches.finish(b)
+    return redirect("statement_batch", pk=b.pk)
+
+
+@login_required
+@require_POST
+def save_hints(request):
+    for acc in _statement_accounts():
+        key = f"hints_{acc.id}"
+        if key in request.POST:
+            acc.match_hints = request.POST[key].strip()[:200]
+            acc.save(update_fields=["match_hints"])
+    messages.success(request, "Account numbers saved.")
+    return redirect(reverse("statements") + "#accounts")
 
 
 @login_required

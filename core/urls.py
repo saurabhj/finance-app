@@ -43,6 +43,9 @@ from statements import views as st_views  # noqa: E402
 urlpatterns += [
     path("statements/", st_views.home, name="statements"),
     path("statements/upload/", st_views.upload, name="statement_upload"),
+    path("statements/batches/<int:pk>/", st_views.batch_detail, name="statement_batch"),
+    path("statements/batches/<int:pk>/assign/", st_views.batch_assign, name="statement_batch_assign"),
+    path("statements/accounts/hints/", st_views.save_hints, name="statement_hints"),
     path("statements/accounts/", st_views.add_account, name="statement_add_account"),
     path("statements/<int:pk>/delete/", st_views.delete_upload, name="statement_delete"),
     path("statements/rules/<int:pk>/delete/", st_views.delete_rule, name="rule_delete"),
