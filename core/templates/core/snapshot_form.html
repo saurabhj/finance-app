@@ -1,11 +1,12 @@
 {% extends "core/base.html" %}
+{% block page_title %}Month-end entry{% endblock %}
+{% block page_title_bar %}{% if snapshot %}Edit {{ snapshot.date|date:"j M Y" }}{% else %}Month-end entry{% endif %}{% endblock %}
 {% block content %}
-<h4>{% if snapshot %}Edit {{ snapshot.date|date:"j M Y" }}{% else %}Month-end entry{% endif %}</h4>
-<p class="text-muted small">Capture on the last day of the month, before the home-loan EMI.
+<p class="muted-note">Capture on the last day of the month, before the home-loan EMI.
 {% if prefilled_from %}Values are pre-filled from {{ prefilled_from|date:"j M Y" }}, so update what changed.{% endif %}
 For investment accounts, also enter the <strong>money you put in (+) or took out (−) since the last entry</strong>.
 That's what separates new savings from real market gain. Moving money between two investments (FD → Zerodha) is −X on one and +X on the other.</p>
-<form method="post">{% csrf_token %}
+<form method="post" data-primary>{% csrf_token %}
   {{ form.non_field_errors }}
   <div class="row g-3 mb-3">
     <div class="col-auto"><label class="form-label">Date</label>{{ form.date.errors }}<input type="date" name="date" class="form-control" value="{{ form.date.value|date:'Y-m-d'|default:form.date.value }}"></div>
@@ -28,7 +29,7 @@ That's what separates new savings from real market gain. Moving money between tw
   {% endfor %}
   </div>
   <div class="mt-3"><label class="form-label">Note</label><textarea name="note" class="form-control" rows="2">{{ form.note.value|default_if_none:'' }}</textarea></div>
-  <button class="btn btn-primary mt-3">Save</button>
+  <button class="btn btn-primary mt-3">Save <span class="kbd">⌘↵</span></button>
   <a class="btn btn-link mt-3" href="{% url 'dashboard' %}">Cancel</a>
 </form>
 {% endblock %}

@@ -1,75 +1,73 @@
 {% extends "core/base.html" %}
 {% load money %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_title_bar %}Dashboard{% if latest %} <span class="text-muted fw-normal ms-2 small">as of {{ latest.snapshot.date|date:"j M Y" }}</span>{% endif %}{% endblock %}
+{% block page_actions %}<a class="btn btn-sm btn-primary" href="{% url 'snapshot_new' %}">Month-end entry <span class="kbd">g e</span></a>{% endblock %}
 {% block content %}
 {% if not latest %}
-  <div class="alert alert-info">No data yet. Run <code>python3 manage.py import_sheet docs/net_worth.xlsx</code> or add a <a href="{% url 'snapshot_new' %}">month-end entry</a>.</div>
+  <div class="alert alert-light">No data yet. Run <code>python3 manage.py import_sheet docs/net_worth.xlsx</code> or add a <a href="{% url 'snapshot_new' %}">month-end entry</a>.</div>
 {% else %}
-<div class="d-flex justify-content-between align-items-baseline mb-3">
-  <h4 class="mb-0">As of {{ latest.snapshot.date|date:"j M Y" }}</h4>
-  <a class="btn btn-primary btn-sm" href="{% url 'snapshot_new' %}">+ Month-end entry</a>
-</div>
-
 {% if latest_review %}
-<div class="alert alert-light border d-flex justify-content-between align-items-center py-2">
-  <div><span class="small text-muted">{{ latest_review.get_cadence_display }} review, {{ latest_review.created_at|date:"j M" }}:</span>
-    <a href="{% url 'review_detail' latest_review.pk %}">{{ latest_review.output_json.headline }}</a></div>
-  {% if open_actions %}<a class="badge text-bg-primary text-decoration-none" href="{% url 'reviews' %}">{{ open_actions }} open action{{ open_actions|pluralize }}</a>{% endif %}
+<div class="alert alert-light d-flex justify-content-between align-items-center">
+  <div><span class="text-muted">{{ latest_review.get_cadence_display }} review · {{ latest_review.created_at|date:"j M" }}</span> &nbsp;<a href="{% url 'review_detail' latest_review.pk %}">{{ latest_review.output_json.headline }}</a></div>
+  {% if open_actions %}<a class="badge text-bg-primary" href="{% url 'reviews' %}">{{ open_actions }} open action{{ open_actions|pluralize }}</a>{% endif %}
 </div>
 {% endif %}
-<div class="row row-cols-2 row-cols-lg-5 g-3 mb-4">
+
+<div class="stats">
   {% include "core/includes/kpi.html" with label="Net worth" value=latest.net_worth|inr sub=latest.change|inr_signed|add:" vs last" %}
   {% if latest.market_gain is not None %}
     {% include "core/includes/kpi.html" with label="Invested this period" value=latest.investments.invested|inr_signed %}
     {% include "core/includes/kpi.html" with label="Market gain / loss" value=latest.market_gain|inr_signed css=latest.market_gain|tone sub=latest.market_gain_pct|pct %}
   {% else %}
-    {% include "core/includes/kpi.html" with label="Invested this period" value="Not tracked" css="text-muted" sub="Imported month: enter money moved going forward" %}
+    {% include "core/includes/kpi.html" with label="Invested this period" value="—" css="text-muted" sub="Not tracked for imported months" %}
     {% include "core/includes/kpi.html" with label="Total change" value=latest.change|inr_signed css=latest.change|tone sub="Savings + market, not split" %}
   {% endif %}
   {% for name, nw in latest.by_person.items %}
     {% include "core/includes/kpi.html" with label=name value=nw|inr %}
   {% endfor %}
+  {% include "core/includes/kpi.html" with label="Cash in bank" value=latest.cash.closing|inr %}
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-lg-8"><div class="card h-100"><div class="card-body">
-    <h6>Net worth</h6><canvas id="nwChart" height="120"></canvas>
+    <h6>Net worth</h6><div class="chart-box"><canvas id="nwChart"></canvas></div>
   </div></div></div>
   <div class="col-lg-4"><div class="card h-100"><div class="card-body">
-    <h6>Allocation</h6><canvas id="allocChart" height="200"></canvas>
-    <table class="table table-sm mt-3 mb-0">
-      {% for a in allocation %}<tr><td>{{ a.label }}</td><td class="num">{{ a.value|inr }}</td><td class="num text-muted">{{ a.pct|pct_plain }}</td></tr>{% endfor %}
+    <h6>Allocation</h6>
+    <div class="chart-box short"><canvas id="allocChart"></canvas></div>
+    <table class="table table-sm mt-2">
+      {% for a in allocation %}<tr><td>{{ a.label }}</td><td class="num">{{ a.value|inr }}</td><td class="num text-muted" style="width:52px">{{ a.pct|pct_plain }}</td></tr>{% endfor %}
     </table>
   </div></div></div>
 </div>
 
 <div class="card mb-4"><div class="card-body">
-  <h6>Money invested vs. market gain each period</h6>
-  <p class="small text-muted mb-2">Grey bars are imported months where money invested wasn't recorded, so they show the total change (savings + market together).
-  {% if ytd.months %} Tracked so far: invested {{ ytd.invested|inr }}, market {{ ytd.gain|inr_signed }} over {{ ytd.months }} period{{ ytd.months|pluralize }}.{% endif %}</p>
-  <canvas id="flowChart" height="90"></canvas>
+  <div class="d-flex justify-content-between align-items-baseline">
+    <h6>Money invested vs. market gain</h6>
+    <span class="small text-muted">{% if ytd.months %}Tracked: invested {{ ytd.invested|inr }} · market {{ ytd.gain|inr_signed }} over {{ ytd.months }} period{{ ytd.months|pluralize }}{% else %}Grey = imported months (savings and market not split){% endif %}</span>
+  </div>
+  <div class="chart-box short"><canvas id="flowChart"></canvas></div>
 </div></div>
 
-<div class="card"><div class="card-body">
-  <h6>History</h6>
-  <div class="table-responsive">
-  <table class="table table-sm table-hover align-middle mb-0">
+<div class="card"><div class="card-body p-0">
+  <table class="table table-hover" data-rows>
     <thead><tr><th>Date</th><th class="num">Net worth</th><th class="num">Change</th><th class="num">Invested</th><th class="num">Market gain</th><th class="num">%</th><th class="num">Cash in bank</th><th></th></tr></thead>
     <tbody>
     {% for p in periods %}
       <tr>
-        <td>{{ p.snapshot.date|date:"j M Y" }}{% if not p.flows_tracked %} <span class="badge text-bg-light">imported</span>{% endif %}</td>
+        <td>{{ p.snapshot.date|date:"j M Y" }}{% if not p.flows_tracked %} <span class="badge">imported</span>{% endif %}</td>
         <td class="num">{{ p.net_worth|inr }}</td>
         <td class="num {{ p.change|tone }}">{{ p.change|inr_signed }}</td>
         <td class="num">{% if p.market_gain is not None %}{{ p.investments.invested|inr_signed }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="num {{ p.market_gain|tone }}">{{ p.market_gain|inr_signed }}</td>
         <td class="num {{ p.market_gain|tone }}">{{ p.market_gain_pct|pct }}</td>
         <td class="num">{{ p.cash.closing|inr }}</td>
-        <td class="text-end"><a class="small" href="{% url 'snapshot_edit' p.snapshot.date|date:'Y-m-d' %}">edit</a></td>
+        <td class="num"><a class="small" href="{% url 'snapshot_edit' p.snapshot.date|date:'Y-m-d' %}">edit</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  </div>
 </div></div>
 {% endif %}
 {% endblock %}
@@ -78,33 +76,30 @@
 {% if latest %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-const D = {{ chart_json|safe }};
+ffTheme();
+const D = {{ chart_json|safe }}, K = ffColors;
 const fmt = v => v == null ? '—' : (Math.abs(v) >= 1e7 ? (v/1e7).toFixed(2)+' Cr' : (v/1e5).toFixed(1)+' L');
-const palette = ['#2a6fdb', '#e07a2f', '#3a9d5d', '#c0392b', '#8e6bbf', '#999'];
 const tick = {callback: v => '₹' + fmt(v)};
-const tip = {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}};
-
+const tip = {callbacks: {label: c => ' ' + c.dataset.label + ': ₹' + fmt(c.raw)}};
 new Chart(document.getElementById('nwChart'), {
   type: 'line',
   data: {labels: D.labels, datasets: [
-    {label: 'Family', data: D.net_worth, borderColor: '#222', borderWidth: 2, tension: .2},
-    ...Object.entries(D.persons).map(([n, d], i) => ({label: n, data: d, borderColor: palette[i], borderDash: [4,3], tension: .2}))
+    {label: 'Family', data: D.net_worth, borderColor: K.text, borderWidth: 2},
+    ...Object.entries(D.persons).map(([n, d], i) => ({label: n, data: d, borderColor: K.series[i], borderDash: [3,3]}))
   ]},
   options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}, interaction: {mode: 'index', intersect: false}}
 });
-
 new Chart(document.getElementById('allocChart'), {
   type: 'doughnut',
-  data: {labels: D.alloc_labels, datasets: [{data: D.alloc_values, backgroundColor: palette}]},
-  options: {plugins: {legend: {position: 'bottom'}, tooltip: {callbacks: {label: c => c.label + ': ₹' + fmt(c.raw)}}}}
+  data: {labels: D.alloc_labels, datasets: [{data: D.alloc_values, backgroundColor: K.series, borderWidth: 0}]},
+  options: {cutout: '72%', plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => ' ' + c.label + ': ₹' + fmt(c.raw)}}}}
 });
-
 new Chart(document.getElementById('flowChart'), {
   type: 'bar',
   data: {labels: D.labels, datasets: [
-    {label: 'Invested', data: D.invested, backgroundColor: '#2a6fdb', stack: 's'},
-    {label: 'Market gain/loss', data: D.gain, backgroundColor: D.gain.map(v => v < 0 ? '#c0392b' : '#3a9d5d'), stack: 's'},
-    {label: 'Total change (not split)', data: D.untracked_change, backgroundColor: '#c8ccd2', stack: 's'},
+    {label: 'Invested', data: D.invested, backgroundColor: K.accent, stack: 's'},
+    {label: 'Market gain/loss', data: D.gain, backgroundColor: D.gain.map(v => v < 0 ? K.neg : K.pos), stack: 's'},
+    {label: 'Total change (not split)', data: D.untracked_change, backgroundColor: K.muted, stack: 's'},
   ]},
   options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}}
 });

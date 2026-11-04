@@ -1,13 +1,12 @@
 {% extends "core/base.html" %}
 {% load money %}
+{% block page_title %}Statements{% endblock %}
+{% block page_title_bar %}Statements{% endblock %}
+{% block page_actions %}{% if unconfirmed %}<a class="btn btn-sm btn-primary" href="{% url 'statements_review' %}">Review {{ unconfirmed }} unconfirmed <span class="kbd">g r</span></a>{% endif %}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-baseline mb-3">
-  <h4 class="mb-0">Statements</h4>
-  {% if unconfirmed %}<a class="btn btn-sm btn-primary" href="{% url 'statements_review' %}">Review {{ unconfirmed }} unconfirmed</a>{% endif %}
-</div>
 <div class="row g-3 mb-4">
   <div class="col-lg-6"><div class="card h-100"><div class="card-body">
-    <h6>Upload</h6>
+    <h6 id="upload">Upload</h6>
     <p class="small text-muted">Bank or credit-card statements as CSV, Excel or PDF. Excel/CSV is read on this Mac; PDFs are read by Claude (allow up to a minute). The app checks its reading against the statement's printed totals. Overlapping periods are fine: duplicates are skipped.</p>
     <form method="post" action="{% url 'statement_upload' %}" enctype="multipart/form-data">{% csrf_token %}
       <select name="account" class="form-select form-select-sm mb-2" required>
@@ -32,7 +31,7 @@
 </div>
 <div class="row g-3 mb-4">
   <div class="col-lg-7"><div class="card h-100"><div class="card-body">
-    <h6>Rules</h6>
+    <h6 id="rules">Rules</h6>
     <p class="small text-muted">If a description contains the keyword, the transaction gets this category. Your rules win over the built-in ones; adding one re-tags unconfirmed transactions straight away.</p>
     <form method="post" action="{% url 'rule_add' %}" class="row g-2 mb-3">{% csrf_token %}
       <div class="col-md-4"><input name="keyword" class="form-control form-control-sm" placeholder="Keyword, e.g. HELLO KIDOLOGY" required></div>
@@ -53,7 +52,7 @@
     <form method="post" action="{% url 'rules_reapply' %}" class="mt-2">{% csrf_token %}<button class="btn btn-link btn-sm p-0">Re-apply rules to unconfirmed transactions</button></form>
   </div></div></div>
   <div class="col-lg-5"><div class="card h-100"><div class="card-body">
-    <h6>Notes for Claude</h6>
+    <h6 id="notes">Notes for Claude</h6>
     <p class="small text-muted">For things a keyword can't express. Claude reads these every time it reads a statement, guesses categories, or runs a review.</p>
     <form method="post" action="{% url 'statement_notes' %}">{% csrf_token %}
       <textarea name="notes" rows="8" class="form-control form-control-sm mb-2" placeholder="e.g.&#10;- Ranjit Bros is our taxi service: transport.&#10;- USD charges from AI/software companies are work subscriptions.&#10;- Hello Kidology is our child's activity class: education.">{{ notes }}</textarea>
@@ -63,7 +62,7 @@
 </div>
 <div class="card"><div class="card-body">
   <h6>Uploaded</h6>
-  <table class="table table-sm mb-0">
+  <table class="table table-sm table-hover mb-0" data-rows>
     <thead><tr><th>Uploaded</th><th>Account</th><th>File</th><th>Period</th><th class="num">Added</th><th>Read by</th><th></th></tr></thead>
     {% for s in uploads %}
     <tr>

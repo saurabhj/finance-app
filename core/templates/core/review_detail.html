@@ -1,9 +1,8 @@
 {% extends "core/base.html" %}
-{% block head %}<style>.review-body table { font-size: .85rem; } .review-body td, .review-body th { padding: .3rem .5rem; border-top: 1px solid #dee2e6; vertical-align: top; }</style>{% endblock %}
+{% block page_title %}Review{% endblock %}
+{% block page_title_bar %}<a href="{% url 'reviews' %}" class="text-muted">AI reviews</a> <span class="text-muted">/</span> {{ review.get_cadence_display }} · {{ review.created_at|date:"j M Y" }}{% endblock %}
 {% block content %}
-<a href="{% url 'reviews' %}" class="small">← All reviews</a>
-<h4 class="mt-2">{{ review.get_cadence_display }} review · {{ review.created_at|date:"j M Y" }}</h4>
-<p class="small text-muted">Model {{ review.model }}{% if review.usage %} · {{ review.usage.input_tokens }} in / {{ review.usage.output_tokens }} out tokens{% endif %}{% if review.error %} · <span class="text-danger">{{ review.error }}</span>{% endif %}</p>
+<p class="muted-note">Model {{ review.model }}{% if review.usage %} · {{ review.usage.input_tokens }} in / {{ review.usage.output_tokens }} out tokens{% endif %}{% if review.error %} · <span class="text-danger">{{ review.error }}</span>{% endif %}</p>
 {% if review.question %}<p><strong>Q:</strong> {{ review.question }}</p>{% endif %}
 <div class="row g-3">
   <div class="col-lg-7"><div class="card"><div class="card-body review-body">{{ html }}</div></div></div>

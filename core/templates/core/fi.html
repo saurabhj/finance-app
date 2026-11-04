@@ -1,12 +1,11 @@
 {% extends "core/base.html" %}
 {% load money %}
+{% block page_title %}Financial independence{% endblock %}
+{% block page_title_bar %}Financial independence{% endblock %}
+{% block page_actions %}<a class="btn btn-sm" href="{% url 'plan' %}">Edit plan <span class="kbd">g l</span></a>{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-baseline mb-3">
-  <h4 class="mb-0">Financial independence</h4>
-  <a class="small" href="{% url 'plan' %}">Edit plan &amp; assumptions</a>
-</div>
 
-<div class="row row-cols-2 row-cols-lg-4 g-3 mb-4">
+<div class="stats">
   {% include "core/includes/kpi.html" with label="FI progress" value=inp.progress|pct_plain sub="corpus ÷ FI target" %}
   {% include "core/includes/kpi.html" with label="FI target" value=inp.fi_target|inr sub="30×-style corpus + loan payoff" %}
   {% include "core/includes/kpi.html" with label="Safe income vs expenses" value=inp.safe_monthly_income|inr sub=income_sub %}
@@ -17,7 +16,7 @@
   {% endif %}
 </div>
 
-<div class="card mb-4"><div class="card-body small">
+<div class="alert alert-light mb-4">
   <strong>Where you stand.</strong>
   Corpus {{ inp.corpus|inr }} (investments + {{ inp.excess_cash|inr }} cash above a {{ inp.emergency_months }}-month emergency fund of {{ inp.emergency_fund|inr }}).
   {% if inp.loan_outstanding %}Home loan outstanding {{ inp.loan_outstanding|inr }} is counted as something to pay off at FI, so the EMI isn't treated as a forever expense.{% else %}<span class="text-warning">No home loan entered yet</span>. Add it on the <a href="{% url 'plan' %}">Plan</a> page for an honest picture.{% endif %}
@@ -25,18 +24,18 @@
   Projection assumes {{ proj.annual_return|pct_plain }} a year blended return, {{ inp.inflation|pct_plain }} inflation, and {{ inp.monthly_investment|inr }}/month invested ({{ contrib_source }}{% if contrib_source == "planned" %}: actual figure takes over after 3 tracked months{% endif %}).
   {% if prob_5y is not None %}Chance of crossing over within 5 years in the simulation: <strong>{{ prob_5y|pct_plain }}</strong>.{% endif %}
   {% if target_prob is not None %} By your target date ({{ hh.target_fi_date|date:"M Y" }}): <strong>{{ target_prob|pct_plain }}</strong>.{% endif %}
-</div></div>
+</div>
 
 <div class="row g-3 mb-4">
   <div class="col-lg-6"><div class="card h-100"><div class="card-body">
     <h6>The wall chart</h6>
     <p class="small text-muted mb-2">YMOYL's wall chart: core monthly spending vs. the income your investments could safely pay ({{ inp.swr|pct_plain }} a year). Where the lines cross is financial independence.</p>
-    <canvas id="wallChart" height="170"></canvas>
+    <div class="chart-box tall"><canvas id="wallChart"></canvas></div>
   </div></div></div>
   <div class="col-lg-6"><div class="card h-100"><div class="card-body">
     <h6>Corpus projection</h6>
     <p class="small text-muted mb-2">2,000 simulated futures (σ {{ mc.sigma|pct_plain }}). Shaded: 10th–90th percentile; line: median; dashed: the FI target as expenses inflate and the loan runs down.</p>
-    <canvas id="mcChart" height="170"></canvas>
+    <div class="chart-box tall"><canvas id="mcChart"></canvas></div>
   </div></div></div>
 </div>
 
@@ -81,7 +80,8 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-const D = {{ chart_json|safe }};
+ffTheme();
+const D = {{ chart_json|safe }}, K = ffColors;
 const fmt = v => v == null ? '—' : (Math.abs(v) >= 1e7 ? (v/1e7).toFixed(2)+' Cr' : Math.abs(v) >= 1e5 ? (v/1e5).toFixed(1)+' L' : Math.round(v).toLocaleString('en-IN'));
 const tick = {callback: v => '₹' + fmt(v)};
 const tip = {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}};
@@ -93,10 +93,10 @@ const H = D.hist_labels.length;
 new Chart(document.getElementById('wallChart'), {
   type: 'line',
   data: {labels: wallLabels, datasets: [
-    {label: 'Safe monthly income', data: [...D.hist_income, ...pad(D.proj_labels.length - 1)], borderColor: '#3a9d5d', tension: .2},
-    {label: 'Core monthly spending', data: [...D.hist_expenses, ...pad(D.proj_labels.length - 1)], borderColor: '#c0392b', tension: .2},
-    {label: 'Projected income', data: [...pad(H - 1), D.hist_income[H-1], ...D.proj_income.slice(1)], borderColor: '#3a9d5d', borderDash: [5,4], pointRadius: 0},
-    {label: 'Projected spending', data: [...pad(H - 1), D.hist_expenses[H-1], ...D.proj_expenses.slice(1)], borderColor: '#c0392b', borderDash: [5,4], pointRadius: 0},
+    {label: 'Safe monthly income', data: [...D.hist_income, ...pad(D.proj_labels.length - 1)], borderColor: K.pos, tension: .2},
+    {label: 'Core monthly spending', data: [...D.hist_expenses, ...pad(D.proj_labels.length - 1)], borderColor: K.neg, tension: .2},
+    {label: 'Projected income', data: [...pad(H - 1), D.hist_income[H-1], ...D.proj_income.slice(1)], borderColor: K.pos, borderDash: [5,4], pointRadius: 0},
+    {label: 'Projected spending', data: [...pad(H - 1), D.hist_expenses[H-1], ...D.proj_expenses.slice(1)], borderColor: K.neg, borderDash: [5,4], pointRadius: 0},
   ]},
   options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}, interaction: {mode: 'index', intersect: false}}
 });
@@ -104,10 +104,10 @@ new Chart(document.getElementById('wallChart'), {
 new Chart(document.getElementById('mcChart'), {
   type: 'line',
   data: {labels: D.band_labels, datasets: [
-    {label: '90th percentile', data: D.p90, borderColor: 'transparent', backgroundColor: 'rgba(42,111,219,.15)', fill: '+1', pointRadius: 0},
-    {label: '10th percentile', data: D.p10, borderColor: 'transparent', backgroundColor: 'rgba(42,111,219,.15)', fill: false, pointRadius: 0},
-    {label: 'Median', data: D.p50, borderColor: '#2a6fdb', pointRadius: 0},
-    {label: 'FI target', data: D.target.slice(0, D.band_labels.length), borderColor: '#222', borderDash: [5,4], pointRadius: 0},
+    {label: '90th percentile', data: D.p90, borderColor: 'transparent', backgroundColor: K.accent + '22', fill: '+1', pointRadius: 0},
+    {label: '10th percentile', data: D.p10, borderColor: 'transparent', backgroundColor: K.accent + '22', fill: false, pointRadius: 0},
+    {label: 'Median', data: D.p50, borderColor: K.accent, pointRadius: 0},
+    {label: 'FI target', data: D.target.slice(0, D.band_labels.length), borderColor: K.text, borderDash: [5,4], pointRadius: 0},
   ]},
   options: {scales: {y: {ticks: tick}}, plugins: {tooltip: tip}, interaction: {mode: 'index', intersect: false}}
 });

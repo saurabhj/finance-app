@@ -1,23 +1,21 @@
-<nav class="navbar navbar-expand bg-white border-bottom flex-wrap">
-  <div class="container">
-    <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}">Family Finance</a>
-    {% if user.is_authenticated %}
-    <ul class="navbar-nav me-auto flex-wrap">
-      <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'snapshot_new' %}">Month-end entry</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'cashflows' %}">Money moved</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'statements' %}">Statements</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'spending' %}">Spending</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'fi' %}">Financial independence</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'holdings' %}">Holdings</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'reviews' %}">AI reviews</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'ask' %}">Ask</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'plan' %}">Plan</a></li>
-      <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Settings</a></li>
-    </ul>
-    <form method="post" action="{% url 'logout' %}" class="d-flex">{% csrf_token %}
-      <button class="btn btn-sm btn-outline-secondary">Log out {{ user.username }}</button>
-    </form>
-    {% endif %}
+<aside class="sidebar">
+  <a class="brand" href="{% url 'dashboard' %}"><span class="dot"></span>Family Finance</a>
+  <button class="search-trigger" data-open-palette type="button"><span>Search or jump to…</span><span class="kbd">⌘K</span></button>
+  {% for section in nav_sections %}
+  <nav>
+    <div class="nav-section-title">{{ section.title }}</div>
+    {% for item in section.items %}
+      <a class="nav-item-link{% if item.active %} active{% endif %}" href="{{ item.url }}" {% if item.key %}title="g then {{ item.key }}"{% endif %}>
+        <span>{{ item.label }}</span>{% if item.badge %}<span class="count">{{ item.badge }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+  {% endfor %}
+  <div class="sidebar-foot">
+    <span>{{ user.username }}</span>
+    <span>
+      <button class="linkish" type="button" onclick="document.getElementById('shortcuts').classList.add('open')" title="Keyboard shortcuts">?</button>
+      <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}<button class="linkish ms-2">Log out</button></form>
+    </span>
   </div>
-</nav>
+</aside>

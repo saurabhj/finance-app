@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
-{% block content %}
-<div class="row justify-content-center"><div class="col-md-4">
-  <div class="card"><div class="card-body">
-    <h5 class="mb-3">Sign in</h5>
-    <form method="post">{% csrf_token %}
-      {% if form.errors %}<div class="alert alert-danger py-2">Wrong username or password.</div>{% endif %}
-      <div class="mb-2"><input class="form-control" name="username" placeholder="Username" autofocus></div>
-      <div class="mb-3"><input class="form-control" type="password" name="password" placeholder="Password"></div>
-      <button class="btn btn-primary w-100">Sign in</button>
-    </form>
-  </div></div>
+{% block page_title %}Sign in{% endblock %}
+{% block anon_content %}
+<div class="login-wrap"><div class="login-card">
+  <div class="brand mb-3" style="padding:0"><span class="dot"></span>Family Finance</div>
+  <form method="post" class="card"><div class="card-body">{% csrf_token %}
+    {% if form.errors %}<div class="alert alert-danger">Wrong username or password.</div>{% endif %}
+    <label class="form-label">Username</label><input class="form-control mb-2" name="username" autofocus autocomplete="username">
+    <label class="form-label">Password</label><input class="form-control mb-3" type="password" name="password" autocomplete="current-password">
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn btn-primary w-100">Sign in</button>
+  </div></form>
 </div></div>
 {% endblock %}

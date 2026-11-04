@@ -1,10 +1,9 @@
 {% extends "core/base.html" %}
 {% load money %}
+{% block page_title %}Spending{% endblock %}
+{% block page_title_bar %}Spending{% endblock %}
+{% block page_actions %}<a class="btn btn-sm" href="?confirmed={% if confirmed_only %}0{% else %}1{% endif %}">{% if confirmed_only %}Include unconfirmed{% else %}Confirmed only{% endif %}</a>{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-baseline mb-3">
-  <h4 class="mb-0">Spending</h4>
-  <a class="small" href="?confirmed={% if confirmed_only %}0{% else %}1{% endif %}">{% if confirmed_only %}Include unconfirmed guesses{% else %}Confirmed only{% endif %}</a>
-</div>
 {% if not rows %}
   <div class="alert alert-light border">No spending yet. Upload bank and credit-card statements on the <a href="{% url 'statements' %}">Statements</a> page.</div>
 {% else %}
@@ -20,9 +19,9 @@
 {% else %}
 <div class="alert alert-warning py-2">No complete month yet: a month counts once every bank account and card you've uploaded statements for covers the whole month.</div>
 {% endif %}
-<div class="card mb-3"><div class="card-body"><canvas id="spendChart" height="90"></canvas></div></div>
-<div class="card"><div class="card-body">
-  <table class="table table-sm mb-0">
+<div class="card mb-3"><div class="card-body"><h6>By category</h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
+<div class="card"><div class="card-body p-0">
+  <table class="table table-sm table-hover mb-0" data-rows>
     <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th>Biggest categories</th><th>Coverage</th></tr></thead>
     {% for r in rows %}
     <tr>
@@ -41,8 +40,8 @@
 {% if rows %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-const D = {{ chart_json|safe }};
-const palette = ['#2a6fdb','#e07a2f','#3a9d5d','#c0392b','#8e6bbf','#d4a017','#1abc9c','#7f8c8d','#e84393','#34495e','#16a085','#a0522d','#6c5ce7','#00b894','#999'];
+ffTheme();
+const D = {{ chart_json|safe }}, palette = ffColors.series.concat(['#7f8c8d','#34495e','#16a085','#a0522d','#6c5ce7','#00b894']);
 const fmt = v => Math.abs(v) >= 1e5 ? (v/1e5).toFixed(1)+' L' : Math.round(v).toLocaleString('en-IN');
 new Chart(document.getElementById('spendChart'), {
   type: 'bar',

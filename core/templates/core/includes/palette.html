@@ -1,0 +1,17 @@
+{{ palette_commands|json_script:"palette-data" }}
+<div class="overlay" id="palette"><div class="palette"><input placeholder="Type a command or page…" autocomplete="off"><ul></ul></div></div>
+<div class="overlay" id="shortcuts"><div class="sheet">
+  <h6>Everywhere</h6>
+  <div class="row-k"><span>Command palette</span><span class="kbd">⌘K</span></div>
+  <div class="row-k"><span>Save the form / confirm</span><span class="kbd">⌘↵</span></div>
+  <div class="row-k"><span>This sheet</span><span class="kbd">?</span></div>
+  <h6>Go to</h6>
+  {% for section in nav_sections %}{% for item in section.items %}{% if item.key %}
+  <div class="row-k"><span>{{ item.label }}</span><span><span class="kbd">g</span> <span class="kbd">{{ item.key }}</span></span></div>
+  {% endif %}{% endfor %}{% endfor %}
+  <h6>Lists</h6>
+  <div class="row-k"><span>Next / previous row</span><span><span class="kbd">j</span> <span class="kbd">k</span></span></div>
+  <div class="row-k"><span>Tick / untick row</span><span class="kbd">x</span></div>
+  <div class="row-k"><span>Change the row's category</span><span class="kbd">c</span></div>
+  <div class="row-k"><span>Open row</span><span class="kbd">↵</span></div>
+</div></div>
