@@ -18,6 +18,8 @@ GUIDE = """Categories:
 - transfer: between the family's own accounts (names: {names}), including self transfers.
 - card_payment: paying a credit-card bill from a bank (CRED, card bill) or, on a card statement, the payment received.
 - loan_emi: home-loan EMI. income: salary, interest, dividends. refund: refunds/cashback/reversals.
+- reimbursement: money from an employer or one's own company repaying an expense (e.g. 'AmazonReim', 'reimb').
+- reimbursable: a purchase made for work that will be repaid (only if the description says so).
 - expense: any other spending; also set spend_category. ignore: anything that isn't money moving (e.g. 'opening balance').
 Smallcase / Weekend Investing subscription fees are expense (subscriptions), not investment."""
 

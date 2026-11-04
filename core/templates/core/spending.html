@@ -19,6 +19,23 @@
 {% else %}
 <div class="alert alert-warning py-2">No complete month yet: a month counts once every bank account and card you've uploaded statements for covers the whole month.</div>
 {% endif %}
+{% if reimb %}
+<div class="card mb-3"><div class="card-body">
+  <h6>Owed to you · work expenses</h6>
+  <p class="small text-muted mb-2">Purchases made for work and the money paid back. Neither side counts as household spending. Each reimbursement is matched to a purchase of the same amount in the 60 days before it.</p>
+  <table class="table table-sm mb-2">
+    <thead><tr><th>Reimbursed by</th><th class="num">Paid for them</th><th class="num">Paid back</th><th class="num">Still owed</th><th>Waiting for repayment</th><th>Repaid, purchase not found</th></tr></thead>
+    {% for r in reimb %}
+    <tr>
+      <td>{{ r.party }}</td><td class="num">{{ r.spent|inr }}</td><td class="num">{{ r.received|inr }}</td>
+      <td class="num">{% if r.owed >= 0 %}<strong class="{% if r.owed > 0 %}text-warning{% endif %}">{{ r.owed|inr }}</strong>{% else %}<span class="text-muted" title="Repaid more than the purchases found so far">purchases not uploaded yet</span>{% endif %}</td>
+      <td class="small">{% for t in r.unpaid|slice:":4" %}{{ t.date|date:"j M" }} {{ t.amount|inr }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">none</span>{% endfor %}{% if r.unpaid|length > 4 %} +{{ r.unpaid|length|add:"-4" }} more{% endif %}</td>
+      <td class="small">{% if r.unmatched_received %}{{ r.unmatched_received|length }} <span class="text-muted">(their purchases may be on a card statement not uploaded yet)</span>{% else %}<span class="text-muted">none</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div></div>
+{% endif %}
 <div class="card mb-3"><div class="card-body"><h6>By category</h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
 <div class="card"><div class="card-body p-0">
   <table class="table table-sm table-hover mb-0" data-rows>

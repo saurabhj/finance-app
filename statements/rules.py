@@ -17,6 +17,7 @@ BUILTIN = [
     (["FD CLOSURE", "TD CLOSURE", "CLOSURE PROCEEDS", "MATURITY PROCEEDS", "FD PREMAT"], "bank", "credit", C.INVESTMENT_RETURN, "", T.FD),
     (["CRED CLUB", "CREDCLUB", "CRED.CLUB", "CREDIT CARD", "CC PAYMENT", "CARD BILL", "CC BILLP", "CCBILLPAY"], "bank", "debit", C.CARD_PAYMENT, "", ""),
     (["PAYMENT RECEIVED", "THANK YOU", "BBPS PAYMENT", "PAYMENT - THANK", "AUTOPAY"], "card", "credit", C.CARD_PAYMENT, "", ""),
+    (["REIMB"], "bank", "credit", C.REIMBURSEMENT, "", ""),
     (["REFUND", "REVERSAL", "CASHBACK"], "any", "credit", C.REFUND, "", ""),
     (["HOME LOAN EMI", "HOUSING LOAN", "LOAN EMI", "HL EMI", "EMI FOR LOAN", "AUTO LOAN", "CAR LOAN", "PERSONAL LOAN"], "bank", "debit", C.LOAN_EMI, "", ""),
     (["IWISH", "RECURRING DEPOSIT", "RD INSTAL"], "bank", "debit", C.INVESTMENT, "", T.FD),
@@ -88,6 +89,7 @@ def apply_rule(txn, rule):
     txn.category = rule.category
     txn.spend_category = rule.spend_category
     txn.investment_account = rule.target_account or resolve_target(rule.target, txn.account.owner)
+    txn.party = rule.party or txn.party
     txn.source = "rule"
     txn.rule = rule
 

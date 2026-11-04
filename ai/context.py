@@ -55,6 +55,9 @@ def build(cadence, today=None, fetch_history=True):
         "net_worth": _net_worth(periods),
         "accounts": _accounts(snap, total_assets),
         "loans": _loans(today),
+        "work_reimbursements_owed": [
+            {"by": r["party"], "paid_for_them": _r(r["spent"]), "paid_back": _r(r["received"]), "owed": _r(r["owed"])}
+            for r in __import__("statements.reimburse", fromlist=["summary"]).summary()],
         "fi": _fi(periods, hh),
         "holdings": _holdings(snap, total_assets, fetch_history),
         "benchmarks": {"Nifty 50": mfapi.benchmark_returns("Nifty 50")} if fetch_history else {},

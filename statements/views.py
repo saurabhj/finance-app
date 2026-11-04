@@ -34,7 +34,7 @@ class AccountForm(forms.ModelForm):
 class RuleForm(forms.ModelForm):
     class Meta:
         model = CategoryRule
-        fields = ["keyword", "applies_to", "direction", "category", "spend_category", "target_account"]
+        fields = ["keyword", "applies_to", "direction", "category", "spend_category", "target_account", "party"]
         labels = {"target_account": "Investment account (for investments)", "applies_to": "Applies to",
                   "spend_category": "Spend type (for spending)"}
 
@@ -246,6 +246,10 @@ def review_save(request):
     for t in Transaction.objects.filter(id__in=ids).select_related("account"):
         cat = request.POST.get(f"cat_{t.id}", t.category)
         spend = request.POST.get(f"spend_{t.id}", "") if cat == Category.EXPENSE else ""
+        party = request.POST.get(f"party_{t.id}", t.party).strip()[:60] if cat in (Category.REIMBURSABLE, Category.REIMBURSEMENT) else ""
+        if party != t.party:
+            t.party = party
+            t.save(update_fields=["party"])
         inv = request.POST.get(f"inv_{t.id}") or None
         inv_acc = inv_accounts.get(int(inv)) if inv else None
         if (cat, spend, inv_acc and inv_acc.id) != (t.category, t.spend_category, t.investment_account_id):
@@ -265,7 +269,11 @@ def review_save(request):
                 continue
             matching.confirm(t)
             confirmed += 1
+    from .reimburse import pair_reimbursements
+    paired = pair_reimbursements()
     parts = [f"{confirmed} confirmed"]
+    if paired:
+        parts.append(f"{paired} reimbursement{'s' if paired > 1 else ''} matched to purchases")
     if taught:
         parts.append(f"{taught} rule{'s' if taught > 1 else ''} learned")
     if skipped:
@@ -280,7 +288,7 @@ def _remember(t, keyword):
     rule = CategoryRule.objects.create(
         keyword=keyword.upper()[:100], applies_to="card" if t.account.kind == "card" else "bank",
         direction="credit" if t.amount > 0 else "debit", category=t.category,
-        spend_category=t.spend_category, target_account=t.investment_account,
+        spend_category=t.spend_category, target_account=t.investment_account, party=t.party,
     )
     # apply to other unconfirmed rows right away
     for other in Transaction.objects.filter(confirmed=False).exclude(pk=t.pk).select_related("account"):
@@ -303,7 +311,9 @@ def spending_view(request):
     chart = {"labels": [r["month"].strftime("%b %Y") for r in rows],
              "series": {c: [float(r["by_cat"].get(c, 0)) for r in rows] for c in cats},
              "emi": [float(r["emi"]) for r in rows]}
+    from .reimburse import summary as reimb_summary
     return render(request, "core/spending.html", {"rows": list(reversed(rows)), "suggestion": sugg,
+                                                  "reimb": reimb_summary(),
                                                   "chart_json": json.dumps(chart), "confirmed_only": confirmed_only})
 
 

@@ -376,6 +376,8 @@ class Category(models.TextChoices):
     INCOME = "income", "Income (salary, interest…)"
     EXPENSE = "expense", "Spending"
     REFUND = "refund", "Refund / cashback"
+    REIMBURSABLE = "reimbursable", "Paid for work (reimbursable)"
+    REIMBURSEMENT = "reimbursement", "Reimbursement received"
     IGNORE = "ignore", "Ignore"
 
 
@@ -429,6 +431,7 @@ class CategoryRule(models.Model):
     spend_category = models.CharField(max_length=20, choices=SpendCategory.choices, blank=True)
     target = models.CharField(max_length=10, choices=Target.choices, blank=True)
     target_account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.CASCADE, related_name="+")
+    party = models.CharField(max_length=60, blank=True, help_text="Who reimburses, for reimbursement rules (e.g. Flourish)")
     is_builtin = models.BooleanField(default=False)
     hits = models.PositiveIntegerField(default=0)
 
@@ -455,6 +458,7 @@ class Transaction(models.Model):
     category = models.CharField(max_length=20, choices=Category.choices, blank=True)
     spend_category = models.CharField(max_length=20, choices=SpendCategory.choices, blank=True)
     investment_account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    party = models.CharField(max_length=60, blank=True, help_text="Who reimburses (for reimbursable / reimbursement rows)")
     source = models.CharField(max_length=10, choices=Source.choices, blank=True)
     rule = models.ForeignKey(CategoryRule, null=True, blank=True, on_delete=models.SET_NULL)
     confirmed = models.BooleanField(default=False)

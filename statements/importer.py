@@ -101,6 +101,8 @@ def reapply_rules():
         if (t.category, t.spend_category, t.investment_account_id) != before:
             t.save()
             changed += 1
+    from .reimburse import pair_reimbursements
+    pair_reimbursements()
     return changed
 
 
@@ -159,6 +161,8 @@ def import_statement(account, name, data, password="", client=None, pre_read=Non
             t.spend_category = ""
         t.save()
     matching.pair_transfers([t for t in todo if t.category])
+    from .reimburse import pair_reimbursements
+    pair_reimbursements()
     stmt.added, stmt.duplicates = len(new), dupes
     stmt.save(update_fields=["added", "duplicates"])
     return stmt

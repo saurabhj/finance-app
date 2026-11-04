@@ -13,7 +13,7 @@ from core.models import (Account, Balance, CashFlow, CategoryRule, Instrument, M
                          StatementUpload, Transaction)
 from integrations import zerodha_ledger
 
-from . import importer, matching, parse_ai, parse_table, rules, spending
+from . import importer, matching, parse_ai, parse_table, reimburse, rules, spending
 
 HDFC_CSV = """HDFC BANK Ltd.
 Statement of account
@@ -476,3 +476,54 @@ class BatchTests(Setup):
             call_command("import_folder", str(folder), stdout=out)
         self.assertIn("Imported", out.getvalue())
         self.assertEqual(UploadItem.objects.get().status, "done")
+
+
+class ReimbursementTests(Setup):
+    BANK = ("Date,Narration,Debit,Credit\n"
+            "10/09/26,UPI/ACMECO/XX.ibz@icici/AmazonReim/I,,4321.09\n"
+            "12/09/26,UPI/ACMECO/XX.ibz@icici/AmazonReim/I,,777.00\n")
+    CARD = ("Transaction Date,Details,Amount (INR)\n"
+            "28/08/2026,AMAZON PAY INDIA,\"4,321.09\"\n"
+            "30/08/2026,AMAZON PAY INDIA,\"2,000.00\"\n")
+
+    def setUp(self):
+        super().setUp()
+        CategoryRule.objects.create(keyword="AMAZONREIM", applies_to="bank", direction="credit",
+                                    category="reimbursement", party="Acme")
+
+    def test_pairs_purchase_and_reimbursement_and_tracks_owed(self):
+        self.imp(self.card, "card.csv", self.CARD)
+        self.imp(self.bank, "bank.csv", self.BANK)
+        paid = Transaction.objects.get(account=self.card, amount=D("-4321.09"))
+        back = Transaction.objects.get(account=self.bank, amount=D("4321.09"))
+        self.assertEqual((back.category, back.party), ("reimbursement", "Acme"))
+        self.assertEqual((paid.category, paid.party, paid.matched_with), ("reimbursable", "Acme", back))
+        other = Transaction.objects.get(account=self.card, amount=D("-2000"))
+        self.assertEqual(other.category, "expense")  # personal Amazon order untouched
+        s = {r["party"]: r for r in reimburse.summary()}["Acme"]
+        self.assertEqual((s["spent"], s["received"], s["owed"]), (D("4321.09"), D("5098.09"), D("-777.00")))
+        self.assertEqual(len(s["unmatched_received"]), 1)  # the 777 purchase isn't in these statements
+
+    def test_not_counted_as_spending(self):
+        self.imp(self.card, "card.csv", self.CARD)
+        self.imp(self.bank, "bank.csv", self.BANK)
+        aug = next(r for r in spending.monthly() if r["month"] == dt.date(2026, 8, 1))
+        self.assertEqual(aug["spend"], D("2000"))  # only the personal order
+        sep = next((r for r in spending.monthly() if r["month"] == dt.date(2026, 9, 1)), None)
+        self.assertTrue(sep is None or sep["spend"] == 0)
+
+    def test_purchase_older_than_60_days_not_paired(self):
+        self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n01/06/2026,AMAZON PAY INDIA,\"4,321.09\"\n")
+        self.imp(self.bank, "bank.csv", self.BANK)
+        self.assertEqual(Transaction.objects.get(account=self.card).category, "expense")
+
+    def test_marking_reimbursable_by_hand_on_review_page(self):
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+        self.imp(self.card, "card.csv", self.CARD)
+        t = Transaction.objects.get(amount=D("-2000"))
+        self.client.post("/statements/review/save/", {"txn": [t.id], f"cat_{t.id}": "reimbursable",
+                                                      f"party_{t.id}": "Acme"})
+        t.refresh_from_db()
+        self.assertEqual((t.category, t.party), ("reimbursable", "Acme"))
+        self.assertContains(self.client.get("/spending/"), "Still owed")

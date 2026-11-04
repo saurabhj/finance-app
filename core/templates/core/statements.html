@@ -65,11 +65,12 @@
       <div class="col-md-3">{{ rule_form.direction }}</div>
       <div class="col-md-4">{{ rule_form.target_account }}</div>
       <div class="col-md-2"><button class="btn btn-sm btn-outline-primary w-100">Add rule</button></div>
-      <div class="col-12 form-text mt-0">Spend type only for Spending; investment account only for investments and payouts. Applies to: bank, card or any; direction: money out, money in or any.</div>
+      <div class="col-md-4"><input name="party" class="form-control form-control-sm" placeholder="Who reimburses (reimbursement rules)"></div>
+      <div class="col-12 form-text mt-0">Spend type only for Spending; investment account only for investments and payouts; "who reimburses" only for reimbursements. Applies to: bank, card or any; direction: money out, money in or any.</div>
     </form>
     {% for r in user_rules %}
       <div class="d-flex justify-content-between small border-top py-1">
-        <span>"{{ r.keyword }}" ({{ r.get_applies_to_display|lower }}, {{ r.get_direction_display|lower }}) → {{ r.get_category_display }}{% if r.spend_category %} / {{ r.get_spend_category_display }}{% endif %}{% if r.target_account %} → {{ r.target_account }}{% endif %} · {{ r.hits }} hit{{ r.hits|pluralize }}</span>
+        <span>"{{ r.keyword }}" ({{ r.get_applies_to_display|lower }}, {{ r.get_direction_display|lower }}) → {{ r.get_category_display }}{% if r.spend_category %} / {{ r.get_spend_category_display }}{% endif %}{% if r.target_account %} → {{ r.target_account }}{% endif %}{% if r.party %} · {{ r.party }}{% endif %} · {{ r.hits }} hit{{ r.hits|pluralize }}</span>
         <form method="post" action="{% url 'rule_delete' r.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm text-danger p-0">×</button></form>
       </div>
     {% empty %}<p class="small text-muted mb-0">No rules of your own yet.</p>{% endfor %}
