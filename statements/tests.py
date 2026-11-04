@@ -85,6 +85,20 @@ class TableParserTests(TestCase):
         rows = parse_table.parse("k.xlsx", buf.getvalue(), is_card=False)
         self.assertEqual((rows[0]["date"], rows[0]["amount"]), (dt.date(2026, 10, 3), D("-800")))
 
+    def test_printed_periods(self):
+        rows = [["Statement From  :  01/10/2026  To  :  31/10/2026"], ["Date", "Narration"]]
+        self.assertEqual(parse_table.find_period(rows, 2), (dt.date(2026, 10, 1), dt.date(2026, 10, 31)))
+        card = [["Statement Date", "01/10/2026"]]
+        self.assertEqual(parse_table.find_period(card, 1, is_card=True), (dt.date(2026, 9, 2), dt.date(2026, 10, 1)))
+
+    def test_hdfc_card_tilde_format(self):
+        text = ("Statement Date~|~01/10/2026 \n\nTransaction type~|~Primary / Addon Customer Name~|~DATE~|~Description~|~AMT~|~Debit /Credit~|~\n"
+                "Domestic~|~S J ~|~06/09/2026 09:09:54~|~WWWBIGBASKETCOM ~|~1,234.56~|~~|~\n"
+                "Domestic~|~S J ~|~21/09/2026 09:12:23~|~AUTOPAY THANK YOU~|~10,000.00~|~Cr~|~\n")
+        rows, period = parse_table.parse("c.csv", text.encode(), is_card=True, with_period=True)
+        self.assertEqual([r["amount"] for r in rows], [D("-1234.56"), D("10000.00")])
+        self.assertEqual(period, (dt.date(2026, 9, 2), dt.date(2026, 10, 1)))
+
     def test_ambiguous_single_amount_bank(self):
         with self.assertRaises(parse_table.TableParseError):
             parse_table.parse("x.csv", b"Date,Narration,Amount\n01/10/26,THING,100\n", is_card=False)

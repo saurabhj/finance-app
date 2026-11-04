@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,13 +25,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+if len(sys.argv) > 1 and sys.argv[1] == "test":
+    # Tests use fake Claude clients; never spend real API credit or hit the network.
+    for _k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        os.environ.pop(_k, None)
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-insecure-key-change-me")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or "dev-only-insecure-key-change-me"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+DEBUG = (os.environ.get("DJANGO_DEBUG") or "1") == "1"
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.ts.net").split(",")
+ALLOWED_HOSTS = (os.environ.get("DJANGO_ALLOWED_HOSTS") or "localhost,127.0.0.1,.ts.net").split(",")
 
 
 # Application definition
@@ -133,8 +138,8 @@ if os.environ.get("EMAIL_HOST_USER"):
         "default": {
             "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
             "OPTIONS": {
-                "host": os.environ.get("EMAIL_HOST", "smtp.gmail.com"),
-                "port": int(os.environ.get("EMAIL_PORT", "587")),
+                "host": os.environ.get("EMAIL_HOST") or "smtp.gmail.com",
+                "port": int(os.environ.get("EMAIL_PORT") or "587"),
                 "username": os.environ["EMAIL_HOST_USER"],
                 "password": os.environ.get("EMAIL_HOST_PASSWORD", ""),
                 "use_tls": True,
@@ -146,7 +151,7 @@ else:  # no SMTP configured: print emails to the console/log
     MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
 DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_HOST_USER") or "finance@localhost"
 REPORT_RECIPIENTS = [e.strip() for e in os.environ.get("REPORT_RECIPIENTS", "").split(",") if e.strip()]
-APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8765")
+APP_BASE_URL = os.environ.get("APP_BASE_URL") or "http://localhost:8765"
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"

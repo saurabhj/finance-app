@@ -15,10 +15,11 @@ BUILTIN = [
     (["ET MONEY", "ETMONEY", "ICCL", "INDIAN CLEARING", "BSE STAR", "BSESTARMF"], "bank", "credit", C.INVESTMENT_RETURN, "", T.MF),
     (["FD BOOKED", "TO FD", "FIXED DEPOSIT", "TERM DEPOSIT", "TD BOOKING"], "bank", "debit", C.INVESTMENT, "", T.FD),
     (["FD CLOSURE", "TD CLOSURE", "CLOSURE PROCEEDS", "MATURITY PROCEEDS", "FD PREMAT"], "bank", "credit", C.INVESTMENT_RETURN, "", T.FD),
-    (["CRED CLUB", "CREDCLUB", "CRED.CLUB", "CREDIT CARD", "CC PAYMENT", "CARD BILL"], "bank", "debit", C.CARD_PAYMENT, "", ""),
+    (["CRED CLUB", "CREDCLUB", "CRED.CLUB", "CREDIT CARD", "CC PAYMENT", "CARD BILL", "CC BILLP", "CCBILLPAY"], "bank", "debit", C.CARD_PAYMENT, "", ""),
     (["PAYMENT RECEIVED", "THANK YOU", "BBPS PAYMENT", "PAYMENT - THANK", "AUTOPAY"], "card", "credit", C.CARD_PAYMENT, "", ""),
     (["REFUND", "REVERSAL", "CASHBACK"], "any", "credit", C.REFUND, "", ""),
-    (["HOME LOAN", "HOUSING LOAN", "LOAN EMI", "HL EMI", "EMI FOR LOAN", "LOAN A/C"], "bank", "debit", C.LOAN_EMI, "", ""),
+    (["HOME LOAN EMI", "HOUSING LOAN", "LOAN EMI", "HL EMI", "EMI FOR LOAN", "AUTO LOAN", "CAR LOAN", "PERSONAL LOAN"], "bank", "debit", C.LOAN_EMI, "", ""),
+    (["IWISH", "RECURRING DEPOSIT", "RD INSTAL"], "bank", "debit", C.INVESTMENT, "", T.FD),
     (["SALARY", "SAL CREDIT", "PAYROLL"], "bank", "credit", C.INCOME, "", ""),
     (["INT.PD", "INT PD", "INTEREST PAID", "INTEREST CREDIT", "CREDIT INTEREST", "SB INT", "DIVIDEND", "ACH C-"],
      "bank", "credit", C.INCOME, "", ""),
@@ -38,12 +39,20 @@ BUILTIN = [
 
 
 def ensure_builtin_rules():
-    if CategoryRule.objects.filter(is_builtin=True).exists():
-        return
+    """Create built-in rules, adding any new ones shipped since the database was created."""
+    existing = set(CategoryRule.objects.filter(is_builtin=True)
+                   .values_list("keyword", "applies_to", "direction", "category"))
+    wanted = set()
     for words, applies, direction, cat, spend, target in BUILTIN:
         for w in words:
-            CategoryRule.objects.create(keyword=w, applies_to=applies, direction=direction, category=cat,
-                                        spend_category=spend, target=target, is_builtin=True)
+            wanted.add((w, applies, direction, cat))
+            if (w, applies, direction, cat) not in existing:
+                CategoryRule.objects.create(keyword=w, applies_to=applies, direction=direction, category=cat,
+                                            spend_category=spend, target=target, is_builtin=True)
+    stale = existing - wanted
+    for kw, applies, direction, cat in stale:
+        CategoryRule.objects.filter(is_builtin=True, keyword=kw, applies_to=applies, direction=direction,
+                                    category=cat).delete()
 
 
 def ordered_rules():

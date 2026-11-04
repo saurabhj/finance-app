@@ -27,13 +27,27 @@ def read(account, name, data, password="", client=None):
         result, warning = parse_ai.extract_pdf(data, password, names, client)
         return _rows_from_ai(result), "claude", warning, _period(result)
     try:
-        return parse_table.parse(name, data, is_card), "table", "", (None, None)
+        rows, period = parse_table.parse(name, data, is_card, with_period=True)
+        return rows, "table", balance_warning(rows), period
     except parse_table.TableParseError as e:
         text = data.decode("utf-8", errors="replace")
         if "<table" in text.lower():  # HTML disguised as .xls
             text = re.sub(r"<[^>]+>", " ", re.sub(r"</t[dh]>", "\t", re.sub(r"</tr>", "\n", text, flags=re.I), flags=re.I))
         result, warning = parse_ai.extract_text(text, names, client)
         return _rows_from_ai(result), "claude", f"Local parser failed ({e}); Claude read it instead. {warning}".strip(), _period(result)
+
+
+def balance_warning(rows):
+    """Running balance should move by exactly each amount (rows may be oldest- or newest-first)."""
+    bal = [(r["amount"], r["balance"]) for r in rows if r.get("balance") is not None]
+    if len(bal) < 2:
+        return ""
+
+    def breaks(seq):
+        return sum(1 for (_, b0), (a1, b1) in zip(seq, seq[1:]) if abs(b0 + a1 - b1) > Decimal("0.01"))
+
+    n = min(breaks(bal), breaks(list(reversed(bal))))
+    return f"Running balance doesn't add up at {n} row(s); some transactions may be missing or misread." if n else ""
 
 
 def _period(result):
@@ -61,6 +75,33 @@ def _rows_from_ai(result):
                      "balance": Decimal(str(t["balance"])) if t["balance"] else None,
                      "category": t["category"], "spend": t["spend_category"]})
     return rows
+
+
+def guess_investment_account(t):
+    """Only when the description names the platform; otherwise leave it for you to pick."""
+    d = t.description.upper()
+    for words, target in ((("ZERODHA",), "zerodha"), (("ET MONEY", "ETMONEY", "ICCL", "BSE STAR"), "mf"),
+                          (("IWISH", "FD ", "FIXED DEP", "RECURRING"), "fd")):
+        if any(w in d for w in words):
+            return rules.resolve_target(target, t.account.owner)
+    return None
+
+
+@db_tx.atomic
+def reapply_rules():
+    """Re-run rules over unconfirmed rows (after adding or fixing rules). Your own edits are kept."""
+    rule_list, changed = rules.ordered_rules(), 0
+    for t in Transaction.objects.filter(confirmed=False).exclude(source=Transaction.Source.USER).select_related("account__owner"):
+        rule = rules.match_rule(rule_list, t.description, t.amount, t.account)
+        before = (t.category, t.spend_category, t.investment_account_id)
+        if rule:
+            rules.apply_rule(t, rule)
+        elif t.category in ("investment", "inv_return") and t.source != "rule":
+            t.investment_account = guess_investment_account(t)
+        if (t.category, t.spend_category, t.investment_account_id) != before:
+            t.save()
+            changed += 1
+    return changed
 
 
 @db_tx.atomic
@@ -112,8 +153,7 @@ def import_statement(account, name, data, password="", client=None):
                 t.source = Transaction.Source.AI
     for t in new:
         if t.category in ("investment", "inv_return") and not t.investment_account_id:
-            t.investment_account = rules.resolve_target("mf" if "MONEY" in t.description.upper() else "zerodha",
-                                                        account.owner)
+            t.investment_account = guess_investment_account(t)
         if t.category != "expense":
             t.spend_category = ""
         t.save()

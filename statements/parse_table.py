@@ -16,7 +16,7 @@ DESC_COLS = ["narration", "description", "particulars", "transaction details", "
 DEBIT_COLS = ["withdrawal amt", "withdrawal amount", "withdrawal", "withdrawals", "debit amount", "debit", "dr", "amount dr"]
 CREDIT_COLS = ["deposit amt", "deposit amount", "deposit", "deposits", "credit amount", "credit", "cr", "amount cr"]
 AMOUNT_COLS = ["amount", "transaction amount", "amount (inr)", "amount(inr)", "amt"]
-TYPE_COLS = ["dr/cr", "cr/dr", "type", "debit/credit", "transaction type"]
+TYPE_COLS = ["debit /credit", "debit/credit", "dr/cr", "cr/dr", "billingamountsign", "cr/dr indicator", "type"]
 BALANCE_COLS = ["closing balance", "balance", "available balance", "running balance"]
 
 DATE_FORMATS = ["%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %b %y",
@@ -47,6 +47,9 @@ def rows_from_file(name, data):
         except Exception as e:  # many banks' ".xls" are really HTML
             raise TableParseError(f"Couldn't read .xls ({e})") from e
     text = data.decode("utf-8-sig", errors="replace")
+    if "~|~" in text:  # HDFC card exports use "~|~" between fields
+        text = text.replace("~|~", "\t").replace("~\r", "\r").replace("~\n", "\n")
+        return [[c.strip().strip("~") for c in line.split("\t")] for line in text.splitlines()]
     try:
         dialect = csv.Sniffer().sniff(text[:4000], delimiters=",;\t|")
     except csv.Error:
@@ -89,12 +92,15 @@ def parse_date(v):
         return v.date()
     if isinstance(v, dt.date):
         return v
-    s = str(v or "").strip().split(" ")[0] if re.match(r"^\d{4}-\d{2}-\d{2} ", str(v or "")) else str(v or "").strip()
-    for fmt in DATE_FORMATS:
-        try:
-            return dt.datetime.strptime(s, fmt).date()
-        except ValueError:
+    s = str(v or "").strip()
+    for candidate in (s, s.split(" ")[0] if " " in s else None):  # drop a trailing time, e.g. "06/09/2026 09:09:54"
+        if not candidate:
             continue
+        for fmt in DATE_FORMATS:
+            try:
+                return dt.datetime.strptime(candidate, fmt).date()
+            except ValueError:
+                continue
     return None
 
 
@@ -118,7 +124,34 @@ def parse_amount(v):
     return (-val if neg else val), hint
 
 
-def parse(name, data, is_card):
+PERIOD_RE = re.compile(r"from\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}).{0,30}?to\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.I)
+
+
+STATEMENT_DATE_RE = re.compile(r"statement date\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.I)
+
+
+def find_period(rows, upto, is_card=False):
+    """Printed statement period, e.g. 'Statement From : 01/10/2026 To : 31/10/2026'.
+    For cards that only print a statement date, assume the month-long billing cycle ending on it."""
+    lines = [" ".join(str(c) for c in row if c not in (None, "")) for row in rows[:upto]]
+    for line in lines:
+        m = PERIOD_RE.search(line)
+        if m:
+            a, b = parse_date(m.group(1)), parse_date(m.group(2))
+            if a and b and a <= b:
+                return a, b
+    if is_card:
+        for line in lines:
+            m = STATEMENT_DATE_RE.search(line)
+            end = parse_date(m.group(1)) if m else None
+            if end:
+                prev = (end.replace(day=1) - dt.timedelta(days=1))
+                start = prev.replace(day=min(end.day, 28)) + dt.timedelta(days=1)
+                return start, end
+    return None, None
+
+
+def parse(name, data, is_card, with_period=False):
     """Returns list of dicts {date, description, amount (+in/-out), balance}."""
     rows = rows_from_file(name, data)
     start, c = find_header(rows)
@@ -155,4 +188,4 @@ def parse(name, data, is_card):
         out.append({"date": date, "description": desc[:300], "amount": Decimal(amount), "balance": bal})
     if not out:
         raise TableParseError("No transactions found under the header row.")
-    return out
+    return (out, find_period(rows, start, is_card)) if with_period else out
