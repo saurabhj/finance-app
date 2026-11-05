@@ -43,6 +43,7 @@ def nav(request):
             ("Ask", "ask", "q", None, "chat"),
         ]),
         ("Setup", [
+            ("Checklist", "checklist", "k", None, "clipboard"),
             ("Plan", "plan", "l", None, "target"),
             ("Settings", "admin:index", None, None, "gear"),
         ]),

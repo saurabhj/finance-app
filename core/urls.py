@@ -40,9 +40,11 @@ urlpatterns += [
 
 from statements import views as st_views  # noqa: E402
 
-from . import account_views  # noqa: E402
+from . import account_views, checklist_views  # noqa: E402
 
 urlpatterns += [
+    path("checklist/", checklist_views.checklist, name="checklist"),
+    path("checklist/from/<int:pk>/", checklist_views.statements_from, name="statements_from"),
     path("accounts/", account_views.accounts, name="accounts"),
     path("accounts/add/", account_views.account_add, name="account_add"),
     path("accounts/<int:pk>/", account_views.account_edit, name="account_edit"),

@@ -252,6 +252,9 @@
     apply();
   });
 
+  // ---------- selects that save as soon as they change
+  document.addEventListener("change", e => { if (e.target.matches("[data-autosubmit]")) e.target.form.submit(); });
+
   // ---------- flash messages fade
   setTimeout(() => $$(".flash .alert-success, .flash .alert-info").forEach(a => a.remove()), 6000);
 

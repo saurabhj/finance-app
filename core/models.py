@@ -67,6 +67,10 @@ class Account(models.Model):
         max_length=200, blank=True,
         help_text="Account / card numbers that appear on its statements, comma-separated (full number or last 4-5 digits). Used to sort bulk uploads.",
     )
+    statements_from = models.DateField(
+        null=True, blank=True,
+        help_text="First month this account needs statements for (e.g. when it was opened). Blank = the checklist's default.",
+    )
     # Loans only
     emi = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     interest_rate = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True,

@@ -16,6 +16,16 @@ def _month_end(m):
     return (m.replace(day=28) + dt.timedelta(days=4)).replace(day=1) - dt.timedelta(days=1)
 
 
+def days_covered(periods, start, end):
+    """How many days from start to end fall inside at least one (from, to) period."""
+    days = set()
+    for a, b in periods:
+        lo, hi = max(a, start), min(b, end)
+        if lo <= hi:
+            days.update(lo + dt.timedelta(days=i) for i in range((hi - lo).days + 1))
+    return len(days)
+
+
 def coverage(months):
     """For each month: list of bank/card accounts with statements that don't cover the whole month."""
     accounts = Account.objects.filter(statements__isnull=False).distinct()
@@ -28,12 +38,7 @@ def coverage(months):
         start, end = m, _month_end(m)
         missing = []
         for acc in accounts:
-            days = set()
-            for a, b in periods[acc.id]:
-                lo, hi = max(a, start), min(b, end)
-                if lo <= hi:
-                    days.update(lo + dt.timedelta(days=i) for i in range((hi - lo).days + 1))
-            if len(days) < (end - start).days + 1:
+            if days_covered(periods[acc.id], start, end) < (end - start).days + 1:
                 missing.append(acc)
         out[m] = missing
     return out

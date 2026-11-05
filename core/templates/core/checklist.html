@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+{% block page_title %}Checklist{% endblock %}
+{% block page_title_bar %}Checklist{% endblock %}
+{% block page_actions %}<a class="btn btn-sm btn-primary" href="{% url 'checklist' %}?check=1">{% if checked %}Check again{% else %}Check what's missing{% endif %}</a>{% endblock %}
+{% block content %}
+{% if checked %}
+<div class="card mb-3"><div class="card-body">
+  <h6 id="todo">To upload</h6>
+  {% if core_todos or extra_todos %}
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="small text-muted mb-1">Core</div>
+      {% for t in core_todos %}<div class="todo"><a href="{{ t.url }}">{{ t.text }}</a></div>{% empty %}<p class="small text-muted mb-0">Nothing. All the core items are in.</p>{% endfor %}
+    </div>
+    <div class="col-lg-5">
+      <div class="small text-muted mb-1">Good to have</div>
+      {% for t in extra_todos %}<div class="todo"><a href="{{ t.url }}">{{ t.text }}</a></div>{% empty %}<p class="small text-muted mb-0">Nothing.</p>{% endfor %}
+    </div>
+  </div>
+  {% else %}<p class="small text-muted mb-0">Nothing to upload. You're up to date.</p>{% endif %}
+  {% if unconfirmed %}<p class="form-text mb-0 mt-2">Once uploaded, <a href="{% url 'statements_review' %}">{{ unconfirmed }} transaction{{ unconfirmed|pluralize }}</a> still need confirming.</p>{% endif %}
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+  <h6 id="months">Statements by month</h6>
+  <div class="table-responsive">
+  <table class="table table-sm mb-2 month-grid">
+    <thead><tr><th>Account</th><th>Needed from</th>{% for m in grid.months %}<th class="m" title="{{ m|date:'F Y' }}">{{ m|date:"M" }}<div class="yr">{{ m|date:"y" }}</div></th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in grid.rows %}
+    <tr>
+      <td class="text-nowrap small">{{ r.account }}</td>
+      <td><form method="post" action="{% url 'statements_from' r.account.id %}">{% csrf_token %}
+        <select name="statements_from" class="form-select form-select-sm" data-autosubmit aria-label="Statements needed from, for {{ r.account }}">
+          <option value="">{{ start|date:"M Y" }}</option>
+          {% for m in month_options %}{% if not forloop.first %}<option value="{{ m|date:'Y-m-d' }}" {% if r.needed_from == m %}selected{% endif %}>{{ m|date:"M Y" }}</option>{% endif %}{% endfor %}
+        </select></form></td>
+      {% for c in r.cells %}<td class="m"><span class="cell {{ c.state }}" title="{{ c.title }}"></span></td>{% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="form-text mb-0"><span class="cell ok"></span> covered <span class="cell partial ms-2"></span> part of the month <span class="cell missing ms-2"></span> missing <span class="cell na ms-2"></span> not needed. Hover a square for the days covered. If an account opened later than {{ start|date:"M Y" }}, set "Needed from" so it stops asking; archive closed accounts on <a href="{% url 'accounts' %}">Accounts</a>.</p>
+</div></div>
+{% endif %}
+
+<div class="row g-3">
+  {% for s in sections %}
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+    <h6>{{ s.title }}</h6>
+    {% for i in s.items %}
+    <div class="check-item">
+      <div class="d-flex justify-content-between align-items-baseline gap-2">
+        <div class="fw-medium">{{ i.title }}</div>
+        {% if i.status %}<span class="status {{ i.status }}">{{ i.status_label }}</span>{% endif %}
+      </div>
+      <div class="small text-muted">{{ i.why }}</div>
+      <div class="form-text mt-0">{{ i.how }} <a href="{{ i.href }}">{{ i.link }}</a></div>
+      {% if i.detail %}<div class="small mt-1">{{ i.detail }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div></div></div>
+  {% endfor %}
+</div>
+{% endblock %}
