@@ -104,6 +104,16 @@ class PlanPageTests(TestCase):
         d.update(kw)
         return d
 
+    def test_saved_percentages_show_with_two_decimals_and_save_again(self):
+        self.client.post("/plan/", self.form())
+        page = self.client.get("/plan/")
+        self.assertContains(page, 'value="3.33"')
+        self.assertContains(page, 'value="6.00"')
+        form = page.context["form"]
+        again = {name: form[name].value() for name in form.fields}
+        again = {k: ("" if v is None else v) for k, v in again.items() if v is not False}
+        self.assertEqual(self.client.post("/plan/", again).status_code, 302)
+
     def test_redirects_to_plan_without_expenses(self):
         self.assertRedirects(self.client.get("/fi/"), "/plan/")
 

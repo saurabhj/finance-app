@@ -10,6 +10,7 @@
     <span class="small text-muted">{{ rec.get_status_display }}{% if rec.status_note %}: {{ rec.status_note }}{% endif %}</span>
   </div>
   <div class="small mt-1">{{ rec.rationale|linebreaksbr }}</div>
+  {% if rec.basis %}<div class="small text-muted mt-1">Based on: {{ rec.basis }}</div>{% endif %}
   {% if rec.status == "open" %}
   <form method="post" action="{% url 'recommendation_update' rec.pk %}" class="d-flex gap-2 mt-1">{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">

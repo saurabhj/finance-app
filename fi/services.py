@@ -12,6 +12,11 @@ from .forms import CLASSES
 HUNDRED = Decimal(100)
 
 
+def _percent(rate):
+    """0.0333 as 3.33, the two decimals the form accepts."""
+    return (rate * HUNDRED).quantize(Decimal("0.01"))
+
+
 def initial_values():
     hh = Household.get()
     exp = MonthlyExpense.objects.order_by("-month").first()
@@ -24,8 +29,8 @@ def initial_values():
         "hours_worked_per_month": hh.hours_worked_per_month,
         "work_costs_monthly": hh.work_costs_monthly or None,
         "planned_monthly_investment": hh.planned_monthly_investment or None,
-        "safe_withdrawal_rate": hh.safe_withdrawal_rate * HUNDRED,
-        "inflation": hh.inflation * HUNDRED,
+        "safe_withdrawal_rate": _percent(hh.safe_withdrawal_rate),
+        "inflation": _percent(hh.inflation),
         "emergency_fund_months": hh.emergency_fund_months,
         "target_fi_date": hh.target_fi_date,
     }

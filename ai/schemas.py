@@ -20,8 +20,9 @@ REVIEW_SCHEMA = {
                     "amount": {"type": "number", "description": "Rupees involved, or 0"},
                     "urgency": {"type": "string", "enum": ["high", "normal", "low"]},
                     "rationale": {"type": "string"},
+                    "basis": {"type": "string", "description": "In a few words, the goal, rule or assumption from family_goals this rests on. If it rests on your own assumption, say so."},
                 },
-                "required": ["title", "verdict", "instrument_id", "amount", "urgency", "rationale"],
+                "required": ["title", "verdict", "instrument_id", "amount", "urgency", "rationale", "basis"],
                 "additionalProperties": False,
             },
         },
@@ -35,8 +36,9 @@ REVIEW_SCHEMA = {
                     "verdict": {"type": "string", "enum": ["exit", "reduce", "hold", "add"]},
                     "amount": {"type": "number", "description": "Rupees to sell/buy, or 0 for hold"},
                     "rationale": {"type": "string"},
+                    "basis": {"type": "string", "description": "In a few words, the goal, rule or assumption from family_goals this rests on. If it rests on your own assumption, say so."},
                 },
-                "required": ["instrument_id", "verdict", "amount", "rationale"],
+                "required": ["instrument_id", "verdict", "amount", "rationale", "basis"],
                 "additionalProperties": False,
             },
         },
@@ -53,12 +55,17 @@ REVIEW_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "assumptions_made": {"type": "array", "description": "Where family_goals was silent and you assumed something.",
+                             "items": {"type": "string"}},
+        "conflicts_with_goals": {"type": "array", "description": "Where their stated goals or rules and their actual numbers or behaviour disagree.",
+                                 "items": {"type": "string"}},
         "risks": {"type": "array", "items": {"type": "string"}},
         "data_gaps": {"type": "array", "items": {"type": "string"}},
         "questions_for_you": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["headline", "summary", "fi_progress", "recommendations", "holding_verdicts",
-                 "advisor_strategy_notes", "risks", "data_gaps", "questions_for_you"],
+                 "advisor_strategy_notes", "assumptions_made", "conflicts_with_goals", "risks", "data_gaps",
+                 "questions_for_you"],
     "additionalProperties": False,
 }
 
@@ -66,9 +73,10 @@ ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
         "answer": {"type": "string", "description": "Markdown answer to the question"},
+        "assumptions_made": {"type": "array", "items": {"type": "string"}},
         "data_gaps": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["answer", "data_gaps"],
+    "required": ["answer", "assumptions_made", "data_gaps"],
     "additionalProperties": False,
 }
 
@@ -84,6 +92,7 @@ CADENCE_INSTRUCTIONS = {
         "where this month's new money should go given the target allocation; any rebalancing across asset classes; "
         "an explicit exit/reduce/hold/add verdict for EVERY self-managed holding in holding_verdicts; a strategy-level "
         "note on each advisor group; tax-aware ideas for this financial year; and the data gaps that most limit the "
-        "advice. If no target allocation is set, propose one suited to their FI timeline as a recommendation."
+        "advice. If no target allocation is set, propose one suited to their stated goals and risk as a recommendation, "
+        "marked as your proposal for them to approve."
     ),
 }

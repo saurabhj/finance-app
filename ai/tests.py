@@ -11,8 +11,58 @@ from django.test import TestCase, override_settings
 from core.models import (Account, Balance, HoldingsPull, Instrument, MonthlyExpense, Person, Position,
                          Recommendation, Review, Snapshot)
 
+from fi import goals
+
 from . import context, review
 from .schemas import REVIEW_SCHEMA
+
+
+class GoalsTests(TestCase):
+    def setUp(self):
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+
+    def post(self, **extra):
+        data = {"note": "Index funds first.", "fi_meaning": "Work only by choice", "spend_at_fi": "400000",
+                "never": "Never sell the SGBs", "exp_what_0": "College", "exp_year_0": "2035", "exp_amount_0": "5000000"}
+        return self.client.post("/plan/goals/", data | extra)
+
+    def test_saved_answers_reach_claude_and_blanks_are_listed(self):
+        self.assertEqual(self.post().status_code, 302)
+        g = goals.for_claude()
+        self.assertEqual(g["note_to_claude"], "Index funds first.")
+        self.assertEqual(g["answers"]["Anything Claude must never touch or suggest"], "Never sell the SGBs")
+        self.assertEqual(g["big_future_expenses"], [{"what": "College", "year": 2035, "amount": 5000000}])
+        self.assertIn("How should it advise?", g["not_answered_yet"])
+        self.assertEqual(g["plan_numbers_left_blank"], ["Target FI date", "Target allocation"])
+
+    def test_page_shows_saved_answers_and_tabs(self):
+        self.post()
+        page = self.client.get("/plan/goals/")
+        self.assertContains(page, "Index funds first.")
+        self.assertContains(page, "College")
+        self.assertContains(page, "Target allocation")
+        self.assertContains(self.client.get("/plan/"), "Goals &amp; beliefs")
+
+    def test_recommendation_shows_what_it_rests_on(self):
+        out = {"headline": "h", "summary": "s", "fi_progress": "f", "holding_verdicts": [], "advisor_strategy_notes": [],
+               "risks": [], "data_gaps": [], "questions_for_you": [], "assumptions_made": ["Assumed 60% equity"],
+               "conflicts_with_goals": ["You said passive only"],
+               "recommendations": [{"title": "Prepay", "verdict": "action", "instrument_id": 0, "amount": 0,
+                                    "urgency": "normal", "rationale": "r", "basis": "Your prepay-first rule"}]}
+        text = review.render_markdown(out, {})
+        for part in ("Based on: Your prepay-first rule", "Assumed 60% equity", "You said passive only"):
+            self.assertIn(part, text)
+        r = Review.objects.create(cadence="monthly", model="m", input_json={})
+        review._store(r, out, {}, "m", {"holdings": {"self_managed": []}})
+        self.assertEqual(r.recommendations.get().basis, "Your prepay-first rule")
+
+    def test_clearing_an_answer_removes_it(self):
+        self.post()
+        self.post(never="", exp_what_0="")
+        g = goals.for_claude()
+        self.assertNotIn("Anything Claude must never touch or suggest", g["answers"])
+        self.assertEqual(g["big_future_expenses"], [])
 
 
 def fake_output(inst_id):

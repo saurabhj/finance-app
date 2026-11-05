@@ -12,6 +12,7 @@ from django.db.models import Min
 from core import analytics
 from core.models import Account, CashFlow, HoldingsPull, Household, Instrument, Recommendation
 from fi import data as fi_data
+from fi import goals as family_goals
 from fi import engine
 from integrations import mfapi
 
@@ -52,6 +53,7 @@ def build(cadence, today=None, fetch_history=True):
             "target_fi_date": str(hh.target_fi_date) if hh.target_fi_date else None,
             "family_notes": hh.categorization_notes or None,
         },
+        "family_goals": family_goals.for_claude(hh),
         "net_worth": _net_worth(periods),
         "accounts": _accounts(snap, total_assets),
         "loans": _loans(today),

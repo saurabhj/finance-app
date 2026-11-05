@@ -2,6 +2,7 @@
 {% block page_title %}Plan{% endblock %}
 {% block page_title_bar %}Plan{% endblock %}
 {% block content %}
+{% include "core/includes/plan_tabs.html" with active="numbers" %}
 <p class="muted-note">The inputs behind the financial-independence numbers and the AI reviews. Rough figures are fine; refine them as you go.</p>
 <form method="post" data-primary>{% csrf_token %}
   {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}

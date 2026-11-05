@@ -8,7 +8,7 @@ from core import analytics
 from core.models import Household
 from core.templatetags.money import inr
 
-from . import data, engine, services
+from . import data, engine, goals, services
 from .forms import PlanForm
 
 
@@ -22,6 +22,16 @@ def plan(request):
     from core.models import Account
     loans = Account.objects.filter(kind=Account.Kind.LOAN, is_active=True).select_related("owner")
     return render(request, "core/plan.html", {"form": form, "loans": loans})
+
+
+@login_required
+def plan_goals(request):
+    form = goals.GoalsForm(request.POST or None, initial=goals.initial_values())
+    if request.method == "POST" and form.is_valid():
+        goals.save(form.cleaned_data)
+        messages.success(request, "Saved. Claude will use this from the next review or question.")
+        return redirect("plan_goals")
+    return render(request, "core/plan_goals.html", {"form": form, "plan_gaps": goals.plan_gaps()})
 
 
 @login_required

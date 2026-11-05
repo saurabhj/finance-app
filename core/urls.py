@@ -26,6 +26,7 @@ from fi import views as fi_views  # noqa: E402
 urlpatterns += [
     path("fi/", fi_views.fi, name="fi"),
     path("plan/", fi_views.plan, name="plan"),
+    path("plan/goals/", fi_views.plan_goals, name="plan_goals"),
 ]
 
 from ai import views as ai_views  # noqa: E402

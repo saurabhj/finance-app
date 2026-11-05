@@ -307,6 +307,8 @@ class Household(models.Model):
         blank=True,
         help_text="Plain-English instructions Claude follows when reading and categorising statements.",
     )
+    note_to_claude = models.TextField(blank=True, help_text="World view and strategy, sent with every review and question.")
+    goals = models.JSONField(default=dict, blank=True, help_text="Answers from the Goals & beliefs form (see fi/goals.py).")
     expected_returns = models.JSONField(
         default=dict, blank=True,
         help_text='Annual nominal return per asset class, e.g. {"equity": 0.11}. Blank = conservative defaults.',
@@ -364,6 +366,7 @@ class Recommendation(models.Model):
     verdict = models.CharField(max_length=10, choices=Verdict.choices, default=Verdict.ACTION)
     title = models.CharField(max_length=200)
     rationale = models.TextField()
+    basis = models.CharField(max_length=300, blank=True, help_text="The goal, rule or assumption this rests on.")
     amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     urgency = models.CharField(max_length=10, default="normal")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)

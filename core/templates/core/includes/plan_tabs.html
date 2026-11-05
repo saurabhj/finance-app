@@ -1,0 +1,4 @@
+<div class="d-flex gap-2 mb-3">
+  <a class="btn btn-sm{% if active == 'numbers' %} btn-primary{% endif %}" href="{% url 'plan' %}">Numbers</a>
+  <a class="btn btn-sm{% if active == 'goals' %} btn-primary{% endif %}" href="{% url 'plan_goals' %}">Goals &amp; beliefs</a>
+</div>

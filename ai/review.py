@@ -124,8 +124,10 @@ def ask(question, client=None):
         review.save()
         raise ReviewError(str(e)) from e
     gaps = "".join(f"\n- {g}" for g in out.get("data_gaps", []))
+    assumed = "".join(f"\n- {a}" for a in out.get("assumptions_made", []))
     review.output_json, review.usage, review.model, review.status = out, usage, served, "done"
-    review.output_markdown = out["answer"] + (f"\n\n**Data gaps:**{gaps}" if gaps else "") + f"\n\n{DISCLAIMER}"
+    review.output_markdown = (out["answer"] + (f"\n\n**What Claude assumed:**{assumed}" if assumed else "")
+                              + (f"\n\n**Data gaps:**{gaps}" if gaps else "") + f"\n\n{DISCLAIMER}")
     review.save()
     return review
 
@@ -137,6 +139,7 @@ def _store(review, out, usage, served, ctx):
     for rec in out.get("recommendations", []):
         Recommendation.objects.create(
             review=review, verdict=rec["verdict"], title=rec["title"][:200], rationale=rec["rationale"],
+            basis=rec.get("basis", "")[:300],
             amount=rec["amount"] or None, urgency=rec["urgency"],
             instrument_id=rec["instrument_id"] if rec["instrument_id"] in valid else None,
         )
@@ -147,6 +150,7 @@ def _store(review, out, usage, served, ctx):
         Recommendation.objects.create(
             review=review, instrument_id=hv["instrument_id"], verdict=hv["verdict"],
             title=f"{hv['verdict'].title()}: {names[hv['instrument_id']]}"[:200], rationale=hv["rationale"],
+            basis=hv.get("basis", "")[:300],
             amount=hv["amount"] or None,
             status=Recommendation.Status.DONE if is_hold else Recommendation.Status.OPEN,
             status_note="No action needed" if is_hold else "",
@@ -163,7 +167,8 @@ def render_markdown(out, names):
         lines += ["### What to do", ""]
         for i, r in enumerate(out["recommendations"], 1):
             amt = f" · {inr(r['amount'])}" if r["amount"] else ""
-            lines.append(f"{i}. **{r['title']}** ({r['verdict']}, {r['urgency']} urgency{amt})  \n   {r['rationale']}")
+            basis = f"  \n   _Based on: {r['basis']}_" if r.get("basis") else ""
+            lines.append(f"{i}. **{r['title']}** ({r['verdict']}, {r['urgency']} urgency{amt})  \n   {r['rationale']}{basis}")
         lines.append("")
     else:
         lines += ["### What to do", "", "Nothing needs doing right now.", ""]
@@ -171,6 +176,8 @@ def render_markdown(out, names):
         lines += ["### Self-managed holdings", "", "| Holding | Verdict | Amount | Why |", "|---|---|---|---|"]
         for h in out["holding_verdicts"]:
             why = h["rationale"].replace("|", "/").replace("\n", " ")
+            if h.get("basis"):
+                why += f" _Based on: {h['basis']}_".replace("|", "/")
             amt = inr(h["amount"]) if h["amount"] else "—"
             lines.append(f"| {names.get(h['instrument_id'], h['instrument_id'])} | **{h['verdict'].title()}** | {amt} | {why} |")
         lines.append("")
@@ -178,8 +185,10 @@ def render_markdown(out, names):
         lines += ["### Advisor strategies", ""]
         lines += [f"- **{a['advisor']}**{' ⚠️' if a['flag'] else ''}: {a['assessment']}" for a in out["advisor_strategy_notes"]]
         lines.append("")
-    for title, key in (("Risks", "risks"), ("Data gaps", "data_gaps"), ("Questions for you", "questions_for_you")):
-        if out[key]:
+    for title, key in (("Where your plan and your numbers disagree", "conflicts_with_goals"),
+                       ("What Claude assumed", "assumptions_made"), ("Risks", "risks"), ("Data gaps", "data_gaps"),
+                       ("Questions for you", "questions_for_you")):
+        if out.get(key):
             lines += [f"### {title}", ""] + [f"- {x}" for x in out[key]] + [""]
     lines.append(DISCLAIMER)
     return "\n".join(lines)
