@@ -1,5 +1,6 @@
 import datetime as dt
 from decimal import Decimal as D
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -145,6 +146,39 @@ class CasTests(TestCase):
         # Re-import: no duplicate flows
         _, created2, skipped2 = cas.import_cas(cas_data(), self.acc)
         self.assertEqual((created, created2, skipped2), (3, 0, 3))
+
+    def test_reads_casparser_typed_result(self):
+        parsed = SimpleNamespace(model_dump=cas_data)
+        with mock.patch("casparser.read_cas_pdf", return_value=parsed):
+            pull, _, _ = cas.import_cas(cas.read_pdf("x.pdf", "pw"), self.acc)
+        self.assertEqual(pull.total_value, D("5000"))
+
+    def mixed_statement(self):
+        data = cas_data()
+        own = data["folios"][0]
+        own["name"] = "A B Sharma"
+        data["investor_info"] = {"name": "A BHARAT SHARMA"}
+        zerodha = {"scheme": "Coin Fund - Direct", "isin": "INF000000002", "amfi": "", "advisor": cas.ZERODHA_CODE,
+                   "close": "100", "valuation": {"date": "2026-10-31", "nav": "10", "value": "1000", "cost": "800"},
+                   "transactions": [{"date": "2026-10-02", "type": "PURCHASE", "amount": "800", "units": "80"}]}
+        child = {"scheme": "Child Fund - Direct", "isin": "INF000000003", "amfi": "", "advisor": cas.ZERODHA_CODE,
+                 "close": "50", "valuation": {"date": "2026-10-31", "nav": "10", "value": "500", "cost": "400"},
+                 "transactions": [{"date": "2026-10-02", "type": "PURCHASE", "amount": "400", "units": "40"}]}
+        data["folios"] += [{"folio": "22", "name": "A Sharma", "schemes": [zerodha]},
+                           {"folio": "33", "name": "Kid Sharma", "schemes": [child]}]
+        return data
+
+    def test_zerodha_funds_keep_flows_but_not_holdings(self):
+        broker = Account.objects.create(owner=self.acc.owner, name="Zerodha", kind="broker")
+        pull, _, _ = cas.import_cas(self.mixed_statement(), self.acc)
+        self.assertEqual((pull.total_value, pull.positions.count()), (D("5000"), 1))
+        self.assertEqual(CashFlow.objects.get(account=broker).amount, D("800"))
+
+    def test_folios_in_another_name_are_left_out_and_reported(self):
+        data = self.mixed_statement()
+        cas.import_cas(data, self.acc)
+        self.assertFalse(Instrument.objects.filter(isin="INF000000003").exists())
+        self.assertEqual(cas.left_out(data), ({"Kid Sharma": D("500")}, D("1000")))
 
     def test_amfi_nav_revalues_pull(self):
         pull, _, _ = cas.import_cas(cas_data(), self.acc)

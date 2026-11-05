@@ -321,6 +321,11 @@ def cas_upload(request):
         return redirect("holdings")
     total = f"₹{pull.total_value:,.0f} in {pull.positions.count()} schemes" if pull else "no current holdings"
     messages.success(request, f"{account}: {total}; {created} transactions added, {skipped} already known.")
+    holders, via_zerodha = cas.left_out(data)
+    if via_zerodha:
+        messages.info(request, f"₹{via_zerodha:,.0f} of funds bought through Zerodha left out: the Zerodha pull already counts them.")
+    for name, value in holders.items():
+        messages.warning(request, f"Not added: ₹{value:,.0f} in folios held in {name}'s name.")
     return redirect("holdings")
 
 

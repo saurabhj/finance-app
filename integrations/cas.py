@@ -9,6 +9,10 @@ What it creates:
 - a HoldingsPull per person's MF account with one Position per scheme;
 - CashFlows for purchases/SIPs (+), redemptions and dividend payouts (−) and
   switches, deduplicated so overlapping statements can be uploaded again.
+
+A CAS can also list funds bought through Zerodha, which the Kite pull already
+counts: only their money flows are kept, on the Zerodha account. Folios in
+someone else's name (a child's, under the parent's PAN) are left out.
 """
 import datetime as dt
 import hashlib
@@ -23,12 +27,39 @@ from .classify import get_or_create_instrument
 INFLOW = {"PURCHASE", "PURCHASE_SIP", "SWITCH_IN", "SWITCH_IN_MERGER"}
 OUTFLOW = {"REDEMPTION", "SWITCH_OUT", "SWITCH_OUT_MERGER", "DIVIDEND_PAYOUT"}
 SWITCHES = {"SWITCH_IN", "SWITCH_IN_MERGER", "SWITCH_OUT", "SWITCH_OUT_MERGER"}
+ZERODHA_CODE = "INZ000031633"  # distributor code on every fund bought through Zerodha
 
 
 def read_pdf(file, password):
     import casparser
 
-    return casparser.read_cas_pdf(file, password, output="dict")
+    parsed = casparser.read_cas_pdf(file, password, output="dict")  # a typed model since casparser 1.0
+    return parsed.model_dump() if hasattr(parsed, "model_dump") else parsed
+
+
+def _first_name(name):
+    return (name or "").upper().split()[0] if (name or "").strip() else ""
+
+
+def _other_holder(folio, data):
+    return _first_name(folio.get("name")) != _first_name((data.get("investor_info") or {}).get("name"))
+
+
+def _value(scheme):
+    return _d((scheme.get("valuation") or {}).get("value"))
+
+
+def left_out(data):
+    """What import_cas doesn't add as holdings: ({holder: value}, value already counted under Zerodha)."""
+    holders, via_zerodha = {}, Decimal("0")
+    for folio in data.get("folios", []):
+        for s in folio.get("schemes", []):
+            if _other_holder(folio, data):
+                if _value(s):
+                    holders[folio["name"]] = holders.get(folio["name"], Decimal("0")) + _value(s)
+            elif s.get("advisor") == ZERODHA_CODE:
+                via_zerodha += _value(s)
+    return holders, via_zerodha
 
 
 def mf_account(person):
@@ -63,16 +94,22 @@ def import_cas(data, account):
     """`data` is casparser's dict output. Returns (pull, flows_created, flows_skipped)."""
     positions, as_of = [], None
     created = skipped = 0
+    broker = Account.objects.filter(owner=account.owner, kind=Account.Kind.BROKER, is_active=True).first()
     for folio in data.get("folios", []):
+        if _other_holder(folio, data):
+            continue
         for s in folio.get("schemes", []):
+            units = _d(s.get("close"))
+            if not units and not s.get("transactions"):
+                continue  # a closed fund with nothing in this period
+            via_zerodha = s.get("advisor") == ZERODHA_CODE
             isin = s.get("isin") or ""
             inst = get_or_create_instrument(
                 isin or f"{folio['folio']}:{s['scheme'][:20]}", s["scheme"], Instrument.Kind.MF,
-                isin=isin, amfi_code=str(s.get("amfi") or ""), via_et_money=True,
+                isin=isin, amfi_code=str(s.get("amfi") or ""), via_et_money=not via_zerodha,
             )
             val = s.get("valuation") or {}
-            units = _d(s.get("close"))
-            if units > 0 and val:
+            if units > 0 and val and not via_zerodha:
                 vdate = _date(val["date"])
                 as_of = max(as_of, vdate) if as_of else vdate
                 cost = _d(val.get("cost"))
@@ -81,7 +118,7 @@ def import_cas(data, account):
                     inst.last_price, inst.last_price_date = _d(val["nav"]), vdate
                     inst.save(update_fields=["last_price", "last_price_date"])
             for t in s.get("transactions", []):
-                made = _flow(account, folio["folio"], inst, t)
+                made = _flow(broker if via_zerodha and broker else account, folio["folio"], inst, t)
                 if made is None:
                     continue
                 created += made
@@ -103,7 +140,8 @@ def import_cas(data, account):
         pull.total_value = sum(p[4] for p in positions)
         pull.save(update_fields=["total_value"])
     from statements.matching import reconcile
-    reconcile(account)  # drop bank-statement rows that duplicate these purchases
+    for acc in filter(None, (account, broker)):
+        reconcile(acc)  # drop bank-statement rows that duplicate these purchases
     return pull, created, skipped
 
 
