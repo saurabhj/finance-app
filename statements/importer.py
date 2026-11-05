@@ -103,6 +103,7 @@ def reapply_rules():
             changed += 1
     from .reimburse import pair_reimbursements
     pair_reimbursements()
+    matching.record_guesses()
     return changed
 
 
@@ -163,6 +164,7 @@ def import_statement(account, name, data, password="", client=None, pre_read=Non
     matching.pair_transfers([t for t in todo if t.category])
     from .reimburse import pair_reimbursements
     pair_reimbursements()
+    matching.record_guesses()
     stmt.added, stmt.duplicates = len(new), dupes
     stmt.save(update_fields=["added", "duplicates"])
     return stmt

@@ -137,6 +137,14 @@ def home_total():
     return -(Transaction.objects.filter(category=Category.HOME).aggregate(s=Sum("amount"))["s"] or ZERO)
 
 
+def loans_given():
+    """Per borrower: lent, repaid and still owed. None of it is spending or income."""
+    rows = defaultdict(lambda: {"lent": ZERO, "repaid": ZERO})
+    for party, amount in Transaction.objects.filter(category=Category.LOAN_GIVEN).values_list("party", "amount"):
+        rows[party or "Unassigned"]["repaid" if amount > 0 else "lent"] += abs(amount)
+    return [{"party": k, **v, "owed": v["lent"] - v["repaid"]} for k, v in sorted(rows.items())]
+
+
 def month_neighbours(month):
     """The months before and after this one, if there's any spending that far out."""
     span = Transaction.objects.filter(category__in=SPEND_ROWS).aggregate(first=Min("date"), last=Max("date"))

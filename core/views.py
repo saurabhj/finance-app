@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from . import analytics
 from .forms import CashFlowForm, SnapshotForm
-from .models import Account, Balance, CashFlow, HoldingsPull, Snapshot
+from .models import Account, Balance, CashFlow, HoldingsPull, Snapshot, Transaction
 
 
 def _f(v):
@@ -126,7 +126,7 @@ def _values_from_pulls(accounts, date):
 
 
 def _flows_between(start, end):
-    qs = CashFlow.objects.filter(date__lte=end)
+    qs = analytics.new_money().filter(date__lte=end)
     if start:
         qs = qs.filter(date__gt=start)
     return dict(qs.values("account_id").annotate(t=Sum("amount")).values_list("account_id", "t"))
@@ -183,8 +183,28 @@ def cashflows(request):
         form.save()
         messages.success(request, "Recorded.")
         return redirect("cashflows")
-    flows = CashFlow.objects.select_related("account__owner", "from_account")[:200]
-    return render(request, "core/cashflows.html", {"form": form, "flows": flows})
+    flows = list(CashFlow.objects.select_related("account__owner", "from_account")[:200])
+    guessed = _guessed_flow_ids()
+    for f in flows:
+        f.is_guess = f.id in guessed
+    return render(request, "core/cashflows.html", {"form": form, "flows": flows, "months": _money_by_month(guessed)})
+
+
+def _guessed_flow_ids():
+    """Flows that only exist because of a bank row nobody has confirmed yet."""
+    return set(Transaction.objects.filter(confirmed=False, cash_flow__source=CashFlow.Source.BANK)
+               .values_list("cash_flow_id", flat=True))
+
+
+def _money_by_month(guessed):
+    """Money put in and taken out each month, newest first. Switches between funds aren't new money."""
+    months = {}
+    for f in CashFlow.objects.exclude(kind=CashFlow.Kind.SWITCH):
+        m = months.setdefault(f.date.replace(day=1), {"invested": Decimal(0), "withdrawn": Decimal(0), "guessed": Decimal(0)})
+        m["invested" if f.amount > 0 else "withdrawn"] += f.amount
+        if f.id in guessed:
+            m["guessed"] += f.amount
+    return [{"month": k, "net": v["invested"] + v["withdrawn"], **v} for k, v in sorted(months.items(), reverse=True)][:24]
 
 
 @login_required

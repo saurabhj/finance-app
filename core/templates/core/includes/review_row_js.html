@@ -3,6 +3,6 @@ document.querySelectorAll('select.cat').forEach(sel => sel.addEventListener('cha
   const row = sel.closest('tr');
   row.querySelector('.spend').hidden = sel.value !== 'expense';
   row.querySelector('.inv').hidden = !['investment', 'inv_return'].includes(sel.value);
-  row.querySelector('.party').hidden = !['reimbursable', 'reimbursement'].includes(sel.value);
+  row.querySelector('.party').hidden = !['reimbursable', 'reimbursement', 'loan_given'].includes(sel.value);
 }));
 </script>

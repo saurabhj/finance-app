@@ -37,6 +37,16 @@
   {% if home_total %}<div class="small text-muted p-2">Home purchase &amp; renovation is one-off, so it isn't in Spending, the chart or the Plan figure. {{ home_total|inr }} in total so far.</div>{% endif %}
 </div></div>
 <div class="card mb-3"><div class="card-body"><h6>By category <span class="small text-muted fw-normal">click a bar to open that month</span></h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
+{% if loans_given %}
+<div class="card mb-3"><div class="card-body">
+  <h6>Owed to you · loans given</h6>
+  <p class="small text-muted mb-2">Money lent and not spent, so none of it is in Spending. Tag a row "Loan given" on the month or Review page, and a repayment the same way.</p>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Borrower</th><th class="num">Lent</th><th class="num">Repaid</th><th class="num">Still owed</th></tr></thead>
+    {% for l in loans_given %}<tr><td>{{ l.party }}</td><td class="num">{{ l.lent|inr }}</td><td class="num">{{ l.repaid|inr }}</td><td class="num"><strong>{{ l.owed|inr }}</strong></td></tr>{% endfor %}
+  </table>
+</div></div>
+{% endif %}
 {% if reimb %}
 <div class="card mb-3"><div class="card-body">
   <h6>Owed to you · work expenses</h6>

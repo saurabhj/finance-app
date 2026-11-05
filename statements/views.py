@@ -19,6 +19,7 @@ from . import batch as batches
 from . import importer, matching, rules, spending
 
 MAX_UPLOAD = 25 * 1024 * 1024
+PARTY_ROWS = (Category.REIMBURSABLE, Category.REIMBURSEMENT, Category.LOAN_GIVEN)
 
 
 class RuleForm(forms.ModelForm):
@@ -268,7 +269,7 @@ def review_save(request):
     for t in Transaction.objects.filter(id__in=ids).select_related("account"):
         cat = request.POST.get(f"cat_{t.id}", t.category)
         spend = request.POST.get(f"spend_{t.id}", "") if cat == Category.EXPENSE else ""
-        party = request.POST.get(f"party_{t.id}", t.party).strip()[:60] if cat in (Category.REIMBURSABLE, Category.REIMBURSEMENT) else ""
+        party = request.POST.get(f"party_{t.id}", t.party).strip()[:60] if cat in PARTY_ROWS else ""
         if party != t.party:
             t.party = party
             t.save(update_fields=["party"])
@@ -293,6 +294,7 @@ def review_save(request):
             confirmed += 1
     from .reimburse import pair_reimbursements
     paired = pair_reimbursements()
+    matching.record_guesses()
     parts = [f"{confirmed} confirmed"]
     if paired:
         parts.append(f"{paired} reimbursement{'s' if paired > 1 else ''} matched to purchases")
@@ -337,6 +339,7 @@ def spending_view(request):
     from .reimburse import summary as reimb_summary
     return render(request, "core/spending.html", {"rows": list(reversed(rows)), "suggestion": sugg,
                                                   "reimb": reimb_summary(), "home_total": spending.home_total(),
+                                                  "loans_given": spending.loans_given(),
                                                   "chart_json": json.dumps(chart), "confirmed_only": confirmed_only})
 
 

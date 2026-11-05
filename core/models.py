@@ -380,6 +380,8 @@ class Category(models.TextChoices):
     INCOME = "income", "Income (salary, interest…)"
     EXPENSE = "expense", "Spending"
     HOME = "home", "Home purchase & renovation"
+    LOAN_GIVEN = "loan_given", "Loan given (owed to us)"
+    WINDFALL = "windfall", "One-off money in (inheritance, sale)"
     REFUND = "refund", "Refund / cashback"
     REIMBURSABLE = "reimbursable", "Paid for work (reimbursable)"
     REIMBURSEMENT = "reimbursement", "Reimbursement received"

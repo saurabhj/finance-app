@@ -13,7 +13,7 @@
     <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" %}hidden{% endif %}>
       {% for v, l in spend_categories %}<option value="{{ v }}" {% if t.spend_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
     </select>
-    <input name="party_{{ t.id }}" value="{{ t.party }}" class="form-control form-control-sm party" placeholder="Who reimburses? e.g. Flourish" {% if t.category != "reimbursable" and t.category != "reimbursement" %}hidden{% endif %}>
+    <input name="party_{{ t.id }}" value="{{ t.party }}" class="form-control form-control-sm party" placeholder="Who owes this? e.g. Flourish" {% if t.category != "reimbursable" and t.category != "reimbursement" and t.category != "loan_given" %}hidden{% endif %}>
     <select name="inv_{{ t.id }}" class="form-select form-select-sm inv" {% if t.category != "investment" and t.category != "inv_return" %}hidden{% endif %}>
       <option value="">— which account? —</option>
       {% for a in investment_accounts %}<option value="{{ a.id }}" {% if t.investment_account_id == a.id %}selected{% endif %}>{{ a }}</option>{% endfor %}

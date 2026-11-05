@@ -3,7 +3,17 @@
 {% block page_title %}Money moved{% endblock %}
 {% block page_title_bar %}Money moved{% endblock %}
 {% block content %}
-<p class="muted-note">Detailed record of money put into or taken out of investments. The month-end form keeps a running total per account; record individual transfers here if you prefer. Later, Zerodha pay-ins and CAS purchases will fill this in automatically.</p>
+<p class="muted-note">Money put into or taken out of investments. It fills in from Zerodha ledgers, CAS statements and bank statements. Bank rows count straight away as a guess, and a ledger or CAS row for the same money replaces them. Confirm them on the Review page, or change a row's category there to take it out.</p>
+{% if months %}
+<div class="card mb-3"><div class="card-body p-0">
+  <table class="table table-sm table-hover mb-0" data-sort>
+    <thead><tr><th>Month</th><th class="num">Invested</th><th class="num">Withdrawn</th><th class="num">Net</th><th class="num">Of which guessed from bank</th></tr></thead>
+    {% for m in months %}
+    <tr><td data-v="{{ m.month|date:"Y-m-d" }}">{{ m.month|date:"M Y" }}</td><td class="num" data-v="{{ m.invested }}">{{ m.invested|inr }}</td><td class="num" data-v="{{ m.withdrawn }}">{{ m.withdrawn|inr }}</td><td class="num {{ m.net|tone }}" data-v="{{ m.net }}">{{ m.net|inr_signed }}</td><td class="num text-muted" data-v="{{ m.guessed }}">{% if m.guessed %}{{ m.guessed|inr_signed }}{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div></div>
+{% endif %}
 <div class="row g-3">
   <div class="col-lg-4"><div class="card"><div class="card-body">
     <h6>Add</h6>
@@ -23,7 +33,7 @@
         <td data-v="{{ f.date|date:"Y-m-d" }}">{{ f.date|date:"j M Y" }}</td><td>{{ f.account }}</td>
         <td class="num {{ f.amount|tone }}" data-v="{{ f.amount }}">{{ f.amount|inr_signed }}</td>
         <td>{{ f.get_kind_display }}</td><td class="small">{{ f.from_account.name|default:"" }}</td>
-        <td class="small text-muted">{{ f.note }}</td>
+        <td class="small text-muted">{% if f.is_guess %}<span class="badge text-bg-warning">guess</span> {% endif %}{{ f.note }}</td>
         <td><form method="post" action="{% url 'cashflow_delete' f.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm text-danger p-0">×</button></form></td>
       </tr>
       {% empty %}<tr><td colspan="7" class="text-muted empty-row">Nothing recorded yet.</td></tr>

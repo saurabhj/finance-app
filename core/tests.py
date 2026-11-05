@@ -8,7 +8,7 @@ from django.test import TestCase
 
 from . import analytics
 from .importer import import_workbook
-from .models import Account, Balance, CashFlow, Person, Snapshot
+from .models import Account, Balance, CashFlow, Person, Snapshot, StatementUpload, Transaction
 from .templatetags.money import inr
 
 SHEET = Path(settings.BASE_DIR) / "docs" / "net_worth.xlsx"
@@ -88,6 +88,30 @@ class AttributionTests(TestCase):
         s = self.snap(dt.date(2026, 1, 31), bank=100, zer=300, loan=50)
         alloc = {a["asset_class"]: a["value"] for a in analytics.allocation(s)}
         self.assertEqual(alloc, {"equity": D(300), "cash": D(100)})
+
+
+class WindfallAndSwitchTests(TestCase):
+    def setUp(self):
+        p = Person.objects.create(name="P")
+        self.bank = Account.objects.create(owner=p, name="Bank", kind="bank", asset_class="cash")
+        self.mf = Account.objects.create(owner=p, name="MF", kind="mf")
+        a = Snapshot.objects.create(date=dt.date(2026, 1, 1), flows_tracked=True)
+        b = Snapshot.objects.create(date=dt.date(2026, 2, 1), flows_tracked=True)
+        Balance.objects.create(snapshot=a, account=self.mf, value=1000)
+        Balance.objects.create(snapshot=a, account=self.bank, value=0)
+        Balance.objects.create(snapshot=b, account=self.mf, value=1000)
+        Balance.objects.create(snapshot=b, account=self.bank, value=900)
+
+    def test_windfall_is_not_savings(self):
+        stmt = StatementUpload.objects.create(account=self.bank, filename="s", sha256="s", parser="table")
+        Transaction.objects.create(statement=stmt, account=self.bank, date=dt.date(2026, 1, 15), description="SALE",
+                                   amount=Decimal("600"), category="windfall", dedupe_key="w")
+        self.assertEqual(analytics.periods()[-1].savings, Decimal("300"))
+
+    def test_one_leg_of_a_fund_switch_is_not_new_money(self):
+        CashFlow.objects.create(date=dt.date(2026, 1, 31), account=self.mf, amount=Decimal("-400"), source="cas",
+                                kind="switch", external_id="cas:s")
+        self.assertEqual(analytics.periods()[-1].investments.invested, Decimal("0"))
 
 
 class EntryFormTests(TestCase):

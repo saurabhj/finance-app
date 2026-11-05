@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
-from .models import Account, AssetClass, Balance, CashFlow, Snapshot
+from .models import Account, AssetClass, Balance, CashFlow, Category, Snapshot, Transaction
 
 ZERO = Decimal("0")
 
@@ -43,6 +43,7 @@ class Period:
     loans: Bucket = field(default_factory=Bucket)
     by_person: dict = field(default_factory=dict)   # person name -> net worth
     by_account: dict = field(default_factory=dict)  # account id -> Bucket
+    windfall: Decimal = ZERO  # one-off money in, like an inheritance: neither earned nor market gain
 
     @property
     def net_worth(self):
@@ -71,10 +72,10 @@ class Period:
 
     @property
     def savings(self):
-        """Net worth change not explained by market gain = money saved this period."""
+        """Net worth change not explained by market gain or a windfall = money saved this period."""
         if self.market_gain is None:
             return None
-        return self.change - self.market_gain
+        return self.change - self.market_gain - self.windfall
 
 
 def _balances_by_snapshot():
@@ -84,9 +85,15 @@ def _balances_by_snapshot():
     return data
 
 
+def new_money():
+    """Flows that move money in or out. A fund switch inside a CAS is neither, and its two legs
+    can land either side of a month-end."""
+    return CashFlow.objects.exclude(source=CashFlow.Source.CAS, kind=CashFlow.Kind.SWITCH)
+
+
 def _flows(account_ids, start, end):
     """Net cash flow per account for dates in (start, end]."""
-    qs = CashFlow.objects.filter(account_id__in=account_ids, date__lte=end)
+    qs = new_money().filter(account_id__in=account_ids, date__lte=end)
     if start:
         qs = qs.filter(date__gt=start)
     return {row["account_id"]: row["total"] for row in qs.values("account_id").annotate(total=Sum("amount"))}
@@ -103,6 +110,9 @@ def periods():
         prev_vals = balances.get(prev.id, {}) if prev else {}
         flows = _flows(accounts.keys(), prev.date if prev else None, snap.date) if prev else {}
         p = Period(snapshot=snap, prev=prev, flows_tracked=snap.flows_tracked)
+        if prev:
+            p.windfall = Transaction.objects.filter(category=Category.WINDFALL, date__gt=prev.date, date__lte=snap.date
+                                                    ).aggregate(t=Sum("amount"))["t"] or ZERO
         person_nw = defaultdict(lambda: ZERO)
         for acc_id in set(cur_vals) | set(prev_vals):
             acc = accounts[acc_id]
@@ -173,7 +183,7 @@ def xirr_for(accounts, min_days=30):
         return Balance.objects.filter(snapshot=snap, account_id__in=ids).aggregate(t=Sum("value"))["t"] or ZERO
 
     flows = [(start.date, -value(start))]
-    flows += [(d, -a) for d, a in CashFlow.objects.filter(
+    flows += [(d, -a) for d, a in new_money().filter(
         account_id__in=ids, date__gt=start.date, date__lte=end.date).values_list("date", "amount")]
     flows.append((end.date, value(end)))
     return xirr(flows)

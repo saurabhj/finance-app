@@ -162,13 +162,60 @@ class MatchingTests(Setup):
         incoming = Transaction.objects.get(account=self.pbank)
         self.assertEqual((incoming.category, incoming.matched_with.account), ("transfer", self.bank))
 
+    def invest_rule(self):
+        CategoryRule.objects.create(keyword="ETMONEY", applies_to="bank", direction="debit", category="investment",
+                                    target_account=self.mf)
+
+    def test_unconfirmed_investment_counts_as_a_guess_and_confirming_keeps_one_flow(self):
+        self.invest_rule()
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n02/10/26,ETMONEY SIP,25000,\n")
+        t = Transaction.objects.get()
+        self.assertFalse(t.confirmed)
+        self.assertEqual((CashFlow.objects.get().amount, t.cash_flow.source), (D("25000"), "bank"))
+        matching.confirm(t)
+        self.assertEqual(CashFlow.objects.get().amount, D("25000"))
+
+    def test_guess_gives_way_to_the_ledger_or_cas_row(self):
+        self.invest_rule()
+        CashFlow.objects.create(date=dt.date(2026, 10, 3), account=self.mf, amount=D("24998.75"), source="cas",
+                                kind="invest", external_id="cas:x")
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n02/10/26,ETMONEY SIP,25000,\n")
+        self.assertEqual(CashFlow.objects.get().source, "cas")
+        self.assertEqual(Transaction.objects.get().cash_flow.source, "cas")
+
+    def test_guess_matches_one_days_purchases_despite_switches_nearby(self):
+        self.invest_rule()
+        for key, day, amount, kind in (("a", 7, "9000", "invest"), ("b", 7, "15999", "invest"),
+                                       ("c", 6, "4000", "switch"), ("d", 11, "700", "invest")):
+            CashFlow.objects.create(date=dt.date(2026, 10, day), account=self.mf, amount=D(amount), source="cas",
+                                    kind=kind, external_id=f"cas:{key}")
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n02/10/26,ETMONEY SIP,25000,\n")
+        self.assertFalse(CashFlow.objects.filter(source="bank").exists())
+
+    def test_redemption_proceeds_match_the_cas_row_days_earlier(self):
+        CategoryRule.objects.create(keyword="MFSS", applies_to="bank", direction="credit", category="inv_return",
+                                    target_account=self.zer)
+        CashFlow.objects.create(date=dt.date(2026, 1, 16), account=self.zer, amount=D("-5000"), source="cas",
+                                kind="withdraw", external_id="cas:r")
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n20/01/26,NSE MFSS SETTLEMENT,,5000\n")
+        self.assertEqual(CashFlow.objects.get().source, "cas")
+
+    def test_recategorising_a_guess_removes_it(self):
+        self.invest_rule()
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n02/10/26,ETMONEY SIP,25000,\n")
+        t = Transaction.objects.get()
+        t.category, t.investment_account = "expense", None
+        t.save()
+        matching.record_guesses()
+        self.assertFalse(CashFlow.objects.exists())
+
     def test_bank_investment_then_ledger_counts_once(self):
         snap0 = Snapshot.objects.create(date=dt.date(2026, 9, 30))
         Balance.objects.create(snapshot=snap0, account=self.zer, value=1000000)
         self.imp(self.bank, "hdfc.csv", HDFC_CSV)
         t = Transaction.objects.get(description__contains="ZERODHA")
         matching.confirm(t)
-        self.assertEqual(CashFlow.objects.get().source, "bank")
+        self.assertEqual(CashFlow.objects.get(bank_transactions=t).source, "bank")
         ledger = ("particulars,posting_date,cost_center,voucher_type,debit,credit,net_balance\n"
                   "Funds added using UPI,2026-10-02,NSE-EQ,Bank Receipts,0,50000,50000\n")
         zerodha_ledger.import_ledger(self.zer, ledger)
@@ -188,7 +235,7 @@ class MatchingTests(Setup):
         CashFlow.objects.create(date=dt.date(2026, 10, 7), account=self.mf, amount=D("9999.50"), source="cas", instrument=inst, external_id="cas:b")
         t = Transaction.objects.get(description__contains="ETMONEY")
         matching.confirm(t)  # 25,000 debit vs 24,998.75 of purchases (stamp duty)
-        self.assertFalse(CashFlow.objects.filter(source="bank").exists())
+        self.assertFalse(CashFlow.objects.filter(source="bank", account=self.mf).exists())
         self.assertEqual(CashFlow.objects.filter(account=self.mf).count(), 2)
 
     def test_recategorising_confirmed_investment_removes_flow(self):
@@ -197,7 +244,7 @@ class MatchingTests(Setup):
         matching.confirm(t)
         t.category, t.investment_account = "transfer", None
         matching.confirm(t)
-        self.assertFalse(CashFlow.objects.exists())
+        self.assertFalse(CashFlow.objects.filter(bank_transactions=t).exists())
 
 
 class FakeStream:
@@ -621,6 +668,15 @@ class SpendingMonthTests(Setup):
         r = self.client.post(f"/checklist/from/{self.card.id}/", {"statements_from": "2026-10-01", "back": "spending"})
         self.assertRedirects(r, "/spending/")
         self.assertNotContains(self.client.get("/spending/"), "have it yet")
+
+    def test_loans_given_stay_out_of_spending_and_track_what_is_owed(self):
+        for amount, key in (("-2000", "a"), ("500", "b")):
+            Transaction.objects.create(statement=StatementUpload.objects.first(), account=self.bank, date=dt.date(2026, 9, 9),
+                                       description="LOAN", amount=D(amount), category="loan_given", party="Acme", dedupe_key=key)
+        self.assertEqual(spending.loans_given(), [{"party": "Acme", "lent": D("2000"), "repaid": D("500"), "owed": D("1500")}])
+        row = next(r for r in spending.monthly() if r["month"] == dt.date(2026, 9, 1))
+        self.assertEqual(row["spend"], D("3200"))
+        self.assertContains(self.client.get("/spending/"), "loans given")
 
     def test_month_neighbours_and_bad_month(self):
         self.assertEqual(spending.month_neighbours(dt.date(2026, 9, 1)), (None, dt.date(2026, 10, 1)))
