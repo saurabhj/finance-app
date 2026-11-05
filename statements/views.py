@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 from django import forms
@@ -5,6 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction as db_tx
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -199,13 +201,17 @@ def review(request):
     for t in page:
         t.keyword_guess = rules.keyword_guess(t.description)
     return render(request, "core/statement_review.html", {
-        "page": page, "status": status, "accounts": _statement_accounts(),
-        "categories": Category.choices, "spend_categories": SpendCategory.choices,
-        "investment_accounts": Account.investment_accounts().filter(is_active=True).select_related("owner"),
+        **_row_choices(), "page": page, "status": status, "accounts": _statement_accounts(),
         "filter_account": request.GET.get("account", ""), "filter_category": request.GET.get("category", "all"),
         "q": q, "sort": sort, "sort_links": _sort_links(request, sort),
         "page_query": _without_page(request),
     })
+
+
+def _row_choices():
+    """What the editable row in core/includes/review_row.html needs."""
+    return {"categories": Category.choices, "spend_categories": SpendCategory.choices,
+            "investment_accounts": Account.investment_accounts().filter(is_active=True).select_related("owner")}
 
 
 def _without_page(request):
@@ -326,11 +332,31 @@ def spending_view(request):
                 cats.append(c)
     chart = {"labels": [r["month"].strftime("%b %Y") for r in rows],
              "series": {c: [float(r["by_cat"].get(c, 0)) for r in rows] for c in cats},
-             "emi": [float(r["emi"]) for r in rows]}
+             "emi": [float(r["emi"]) for r in rows],
+             "links": [reverse("spending_month", args=[r["month"].year, r["month"].month]) for r in rows]}
     from .reimburse import summary as reimb_summary
     return render(request, "core/spending.html", {"rows": list(reversed(rows)), "suggestion": sugg,
-                                                  "reimb": reimb_summary(),
+                                                  "reimb": reimb_summary(), "home_total": spending.home_total(),
                                                   "chart_json": json.dumps(chart), "confirmed_only": confirmed_only})
+
+
+@login_required
+def spending_month(request, year, month):
+    try:
+        start = dt.date(year, month, 1)
+    except ValueError:
+        raise Http404("No such month")
+    unconfirmed_only = request.GET.get("show") == "unconfirmed"
+    by_date = request.GET.get("sort") == "date"
+    detail = spending.month_detail(start, unconfirmed_only, by_date)
+    for g in detail["groups"]:
+        for t in g["rows"]:
+            t.keyword_guess = rules.keyword_guess(t.description)
+    prev_month, next_month = spending.month_neighbours(start)
+    return render(request, "core/spending_month.html", {
+        **_row_choices(), **detail, "month": start, "prev_month": prev_month, "next_month": next_month,
+        "unconfirmed_only": unconfirmed_only, "by_date": by_date,
+    })
 
 
 @login_required

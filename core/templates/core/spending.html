@@ -3,6 +3,7 @@
 {% block page_title %}Spending{% endblock %}
 {% block page_title_bar %}Spending{% endblock %}
 {% block page_actions %}<a class="btn btn-sm" href="?confirmed={% if confirmed_only %}0{% else %}1{% endif %}">{% if confirmed_only %}Include unconfirmed{% else %}Confirmed only{% endif %}</a>{% endblock %}
+{% block head %}<style>.coverage-gap { display: block; margin: 0; } .coverage-gap button { font-size: inherit; vertical-align: baseline; }</style>{% endblock %}
 {% block content %}
 {% if not rows %}
   <div class="alert alert-light border">No spending yet. Upload bank and credit-card statements on the <a href="{% url 'statements' %}">Statements</a> page.</div>
@@ -19,6 +20,23 @@
 {% else %}
 <div class="alert alert-warning py-2">No complete month yet: a month counts once every bank account and card you've uploaded statements for covers the whole month.</div>
 {% endif %}
+<div class="card mb-3"><div class="card-body p-0">
+  <table class="table table-sm table-hover mb-0" data-rows data-sort>
+    <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th class="num">Home &amp; renovation</th><th data-nosort>Biggest categories</th><th>Coverage</th></tr></thead>
+    {% for r in rows %}
+    <tr>
+      <td class="text-nowrap" data-v="{{ r.month|date:"Y-m-d" }}"><a href="{% url 'spending_month' r.month.year r.month.month %}">{{ r.month|date:"M Y" }}</a></td>
+      <td class="num" data-v="{{ r.spend }}">{{ r.spend|inr }}{% if r.unconfirmed %}<div class="small text-muted">{{ r.unconfirmed|inr }} unconfirmed</div>{% endif %}</td>
+      <td class="num">{{ r.emi|inr }}</td>
+      <td class="num text-muted">{% if r.home %}{{ r.home|inr }}{% endif %}</td>
+      <td class="small">{% for c, v in r.by_cat.items %}{% if forloop.counter <= 4 %}{{ c }} {{ v|inr }}{% if not forloop.last and forloop.counter < 4 %} · {% endif %}{% endif %}{% endfor %}</td>
+      <td class="small">{% if r.in_progress %}<span class="text-muted">month in progress</span>{% elif r.complete %}<span class="text-success">complete</span>{% else %}{% for g in r.gaps %}<div class="coverage-gap"><span class="text-warning">missing: {{ g.account.name }}</span>{% if g.before_first %} <form method="post" action="{% url 'statements_from' g.account.id %}" class="d-inline">{% csrf_token %}<input type="hidden" name="statements_from" value="{{ r.next_month|date:"Y-m-d" }}"><input type="hidden" name="back" value="spending"><button class="btn btn-link btn-sm p-0" title="Stop asking for {{ g.account.name }} statements up to {{ r.month|date:"M Y" }}">didn't have it yet</button></form>{% endif %}</div>{% endfor %}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if home_total %}<div class="small text-muted p-2">Home purchase &amp; renovation is one-off, so it isn't in Spending, the chart or the Plan figure. {{ home_total|inr }} in total so far.</div>{% endif %}
+</div></div>
+<div class="card mb-3"><div class="card-body"><h6>By category <span class="small text-muted fw-normal">click a bar to open that month</span></h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
 {% if reimb %}
 <div class="card mb-3"><div class="card-body">
   <h6>Owed to you · work expenses</h6>
@@ -36,21 +54,6 @@
   </table>
 </div></div>
 {% endif %}
-<div class="card mb-3"><div class="card-body"><h6>By category</h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
-<div class="card"><div class="card-body p-0">
-  <table class="table table-sm table-hover mb-0" data-rows data-sort>
-    <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th data-nosort>Biggest categories</th><th>Coverage</th></tr></thead>
-    {% for r in rows %}
-    <tr>
-      <td data-v="{{ r.month|date:"Y-m-d" }}">{{ r.month|date:"M Y" }}</td>
-      <td class="num" data-v="{{ r.spend }}">{{ r.spend|inr }}{% if r.unconfirmed %}<div class="small text-muted">{{ r.unconfirmed|inr }} unconfirmed</div>{% endif %}</td>
-      <td class="num">{{ r.emi|inr }}</td>
-      <td class="small">{% for c, v in r.by_cat.items %}{% if forloop.counter <= 4 %}{{ c }} {{ v|inr }}{% if not forloop.last and forloop.counter < 4 %} · {% endif %}{% endif %}{% endfor %}</td>
-      <td class="small">{% if r.complete %}<span class="text-success">complete</span>{% else %}<span class="text-warning">missing: {% for a in r.missing %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</div></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
@@ -63,7 +66,7 @@ const fmt = v => Math.abs(v) >= 1e5 ? (v/1e5).toFixed(1)+' L' : Math.round(v).to
 new Chart(document.getElementById('spendChart'), {
   type: 'bar',
   data: {labels: D.labels, datasets: Object.entries(D.series).map(([k, v], i) => ({label: k, data: v, backgroundColor: palette[i % palette.length], stack: 's'}))},
-  options: {scales: {y: {ticks: {callback: v => '₹' + fmt(v)}}}, plugins: {tooltip: {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}}}}
+  options: {onClick: (e, bars) => { if (bars.length) location.href = D.links[bars[0].index]; }, scales: {y: {ticks: {callback: v => '₹' + fmt(v)}}}, plugins: {tooltip: {callbacks: {label: c => c.dataset.label + ': ₹' + fmt(c.raw)}}}}
 });
 </script>
 {% endif %}

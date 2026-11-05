@@ -7,19 +7,18 @@ from dataclasses import dataclass, field
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Max, Min
+from django.db.models import Max
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from integrations import kite
-from statements.spending import _month, _month_end, days_covered
+from statements.spending import GRACE_DAYS, _month, _month_end, days_needed, statement_periods
 
 from .models import (Account, AllocationTarget, Balance, CashFlow, Category, Household, HoldingsPull, Loan,
                      LoanCheckpoint, MonthlyExpense, Person, Snapshot, StatementUpload, Transaction)
 
 START = dt.date(2025, 6, 1)  # statements are wanted from here on, unless an account says otherwise
-GRACE_DAYS = 3               # card cycles rarely line up with the calendar: a few uncovered days still count
 STALE_DAYS = 45
 
 OK, PARTIAL, MISSING = "ok", "partial", "missing"
@@ -107,17 +106,6 @@ def months_between(first, last):
     return out
 
 
-def statement_periods():
-    """Each account's statement periods; uploads without printed dates fall back to their transactions."""
-    periods = {}
-    uploads = StatementUpload.objects.annotate(first=Min("transactions__date"), last=Max("transactions__date"))
-    for s in uploads:
-        lo, hi = s.period_start or s.first, s.period_end or s.last
-        if lo and hi:
-            periods.setdefault(s.account_id, []).append((lo, hi))
-    return periods
-
-
 def statement_grid(today):
     """One row per active bank/card account, one cell per complete month since it needs statements."""
     last = _month(_month(today) - dt.timedelta(days=1))
@@ -132,8 +120,7 @@ def statement_grid(today):
             if m < needed_from:
                 cells.append({"state": "na", "title": f"{month_label(m)}: not needed"})
                 continue
-            total = _month_end(m).day
-            got = days_covered(periods.get(acc.id, []), m, _month_end(m))
+            total, got = days_needed(acc, periods[acc.id], m)
             state = OK if total - got <= GRACE_DAYS else (PARTIAL if got else MISSING)
             cells.append({"state": state, "title": f"{month_label(m)}: {got} of {total} days"})
             if state != OK:
@@ -336,4 +323,6 @@ def statements_from(request, pk):
         messages.error(request, "That month wasn't recognised.")
         return redirect(reverse("checklist") + "?check=1#months")
     acc.save(update_fields=["statements_from"])
+    if request.POST.get("back") == "spending":
+        return redirect("spending")
     return redirect(reverse("checklist") + "?check=1#months")

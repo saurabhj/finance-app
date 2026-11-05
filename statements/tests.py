@@ -541,6 +541,104 @@ class BatchTests(Setup):
         self.assertEqual(UploadItem.objects.get().status, "done")
 
 
+class SpendingMonthTests(Setup):
+    CARD = ("Transaction Date,Details,Amount (INR)\n"
+            "03/09/2026,SWIGGY ORDER,500.00\n"
+            "05/09/2026,SWIGGY ORDER,700.00\n"
+            "07/09/2026,AMAZON PAY INDIA,\"2,000.00\"\n"
+            "02/10/2026,SWIGGY ORDER,900.00\n")
+
+    def setUp(self):
+        super().setUp()
+        User.objects.create_user("u", password="pw")
+        self.client.login(username="u", password="pw")
+        self.imp(self.card, "card.csv", self.CARD)
+
+    def test_groups_match_the_month_total_biggest_first(self):
+        d = spending.month_detail(dt.date(2026, 9, 1))
+        self.assertEqual([(g["key"], g["total"], g["count"]) for g in d["groups"]],
+                         [("shopping", D("2000"), 1), ("dining", D("1200"), 2)])
+        row = next(r for r in spending.monthly() if r["month"] == dt.date(2026, 9, 1))
+        self.assertEqual(d["spend"], row["spend"])
+        self.assertEqual([t.amount for t in d["groups"][1]["rows"]], [D("-700"), D("-500")])  # largest first
+
+    def test_page_lets_you_recategorise_and_confirm_from_the_month(self):
+        url = "/spending/2026/9/"
+        page = self.client.get(url)
+        self.assertContains(page, "SWIGGY ORDER", count=4)  # title attribute + text for the 2 September rows
+        self.assertNotContains(page, 'class="ok" checked')  # nothing is pre-ticked here
+        t = Transaction.objects.get(amount=D("-500"))
+        other = Transaction.objects.get(amount=D("-700"))
+        saved = self.client.post("/statements/review/save/", {
+            "next": url, "txn": [t.id, other.id], f"cat_{t.id}": "expense", f"spend_{t.id}": "groceries",
+            f"ok_{t.id}": "on", f"cat_{other.id}": "expense", f"spend_{other.id}": "dining"})
+        self.assertRedirects(saved, url)
+        t.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual((t.spend_category, t.confirmed), ("groceries", True))
+        self.assertFalse(other.confirmed)
+        self.assertEqual(self.client.get(url + "?show=unconfirmed").context["groups"][0]["total"], D("2000"))
+
+    def test_unconfirmed_filter_hides_rows_but_keeps_totals(self):
+        matching.confirm(Transaction.objects.get(amount=D("-2000")))
+        d = spending.month_detail(dt.date(2026, 9, 1), unconfirmed_only=True)
+        self.assertEqual((d["spend"], d["unconfirmed"], d["groups"][0]["rows"]), (D("3200"), 2, []))
+
+    def test_home_costs_are_shown_apart_from_spending(self):
+        t = Transaction.objects.get(amount=D("-2000"))
+        t.category, t.spend_category = "home", ""
+        t.save()
+        row = next(r for r in spending.monthly() if r["month"] == dt.date(2026, 9, 1))
+        self.assertEqual((row["spend"], row["home"]), (D("1200"), D("2000")))
+        self.assertEqual(sum(row["by_cat"].values()), D("1200"))
+        d = spending.month_detail(dt.date(2026, 9, 1))
+        self.assertEqual((d["spend"], d["home"], d["groups"][-1]["key"]), (D("1200"), D("2000"), "home"))
+        self.assertEqual(spending.home_total(), D("2000"))
+        self.assertContains(self.client.get("/spending/"), "one-off")
+
+    def statement(self, start, end):
+        StatementUpload.objects.create(account=self.card, filename=f"{start}.csv", sha256=str(start), parser="table",
+                                       period_start=start, period_end=end)
+
+    def test_coverage_skips_months_before_the_account_existed(self):
+        StatementUpload.objects.filter(account=self.card).update(period_start=dt.date(2026, 8, 9), period_end=dt.date(2026, 8, 31))
+        months = [dt.date(2026, 7, 1), dt.date(2026, 8, 1)]
+        self.assertEqual(spending.coverage(months)[months[1]], [self.card])  # started mid-month, nobody said so
+        self.card.statements_from = dt.date(2026, 8, 1)
+        self.card.save()
+        cov = spending.coverage(months)
+        self.assertEqual((cov[months[0]], cov[months[1]]), ([], []))  # first month only counts from its first statement
+
+    def test_coverage_allows_a_few_days_at_month_end(self):
+        StatementUpload.objects.filter(account=self.card).update(period_start=dt.date(2026, 9, 3), period_end=dt.date(2026, 9, 30))
+        self.assertEqual(spending.coverage([dt.date(2026, 9, 1)])[dt.date(2026, 9, 1)], [])
+        StatementUpload.objects.filter(account=self.card).update(period_end=dt.date(2026, 9, 20))
+        self.assertEqual(spending.coverage([dt.date(2026, 9, 1)])[dt.date(2026, 9, 1)], [self.card])
+
+    def test_didnt_have_it_yet_button_goes_back_to_spending(self):
+        StatementUpload.objects.filter(account=self.card).update(period_start=dt.date(2026, 10, 1), period_end=dt.date(2026, 10, 31))
+        self.assertEqual(self.client.get("/spending/").content.decode().count("have it yet"), 1)  # Sep only, not Oct's gap
+        r = self.client.post(f"/checklist/from/{self.card.id}/", {"statements_from": "2026-10-01", "back": "spending"})
+        self.assertRedirects(r, "/spending/")
+        self.assertNotContains(self.client.get("/spending/"), "have it yet")
+
+    def test_month_neighbours_and_bad_month(self):
+        self.assertEqual(spending.month_neighbours(dt.date(2026, 9, 1)), (None, dt.date(2026, 10, 1)))
+        self.assertEqual(self.client.get("/spending/2026/13/").status_code, 404)
+
+    def test_a_full_month_saves_in_one_post(self):
+        stmt = StatementUpload.objects.first()
+        Transaction.objects.bulk_create(
+            Transaction(statement=stmt, account=self.card, date=dt.date(2026, 9, 9), description=f"ROW {i}",
+                        amount=D("-1"), category="expense", spend_category="other", dedupe_key=f"bulk{i}")
+            for i in range(300))
+        ids = list(Transaction.objects.filter(description__startswith="ROW").values_list("id", flat=True))
+        data = {"txn": ids}
+        for i in ids:
+            data |= {f"cat_{i}": "expense", f"spend_{i}": "other", f"party_{i}": "", f"inv_{i}": "", f"kw_{i}": "ROW"}
+        self.assertEqual(self.client.post("/statements/review/save/", data).status_code, 302)
+
+
 class ReimbursementTests(Setup):
     BANK = ("Date,Narration,Debit,Credit\n"
             "10/09/26,UPI/ACMECO/XX.ibz@icici/AmazonReim/I,,4321.09\n"

@@ -20,29 +20,7 @@
 <table class="table table-sm table-hover rv mb-0" data-rows>
   <thead><tr><th><input type="checkbox" id="all" checked title="Select all"></th><th><a class="sort-link" href="{{ sort_links.date.url }}">Date {{ sort_links.date.arrow }}</a></th><th><a class="sort-link" href="{{ sort_links.account.url }}">Account {{ sort_links.account.arrow }}</a></th><th><a class="sort-link" href="{{ sort_links.description.url }}">Description {{ sort_links.description.arrow }}</a></th><th class="num"><a class="sort-link" href="{{ sort_links.amount.url }}">Amount {{ sort_links.amount.arrow }}</a></th><th><a class="sort-link" href="{{ sort_links.category.url }}">Category {{ sort_links.category.arrow }}</a></th><th>Spend type / investment account</th><th>Guess by</th><th>Remember as</th></tr></thead>
   {% for t in page %}
-  <tr {% if not t.category %}class="table-warning"{% elif t.confirmed %}class="table-light"{% endif %}>
-    <td><input type="hidden" name="txn" value="{{ t.id }}">{% if not t.confirmed %}<input type="checkbox" name="ok_{{ t.id }}" class="ok" checked>{% else %}✓{% endif %}</td>
-    <td class="text-nowrap">{{ t.date|date:"j M y" }}</td>
-    <td class="small">{{ t.account.name }}</td>
-    <td class="desc" title="{{ t.description }}">{{ t.description }}{% if t.matched_with %}<div class="small text-muted">↔ {{ t.matched_with.account }}{% if t.category == "reimbursable" or t.category == "reimbursement" %} · {{ t.matched_with.date|date:"j M" }}{% endif %}</div>{% endif %}</td>
-    <td class="num {{ t.amount|tone }}">{{ t.amount|inr_signed }}</td>
-    <td><select name="cat_{{ t.id }}" class="form-select form-select-sm cat">
-      <option value="" {% if not t.category %}selected{% endif %}>— choose —</option>
-      {% for v, l in categories %}<option value="{{ v }}" {% if t.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
-    </select></td>
-    <td>
-      <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" %}hidden{% endif %}>
-        {% for v, l in spend_categories %}<option value="{{ v }}" {% if t.spend_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
-      </select>
-      <input name="party_{{ t.id }}" value="{{ t.party }}" class="form-control form-control-sm party" placeholder="Who reimburses? e.g. Flourish" {% if t.category != "reimbursable" and t.category != "reimbursement" %}hidden{% endif %}>
-      <select name="inv_{{ t.id }}" class="form-select form-select-sm inv" {% if t.category != "investment" and t.category != "inv_return" %}hidden{% endif %}>
-        <option value="">— which account? —</option>
-        {% for a in investment_accounts %}<option value="{{ a.id }}" {% if t.investment_account_id == a.id %}selected{% endif %}>{{ a }}</option>{% endfor %}
-      </select>
-    </td>
-    <td class="small text-muted">{{ t.get_source_display }}</td>
-    <td class="text-nowrap"><input type="checkbox" name="rem_{{ t.id }}"> <input name="kw_{{ t.id }}" value="{{ t.keyword_guess }}" class="form-control form-control-sm d-inline-block" style="width: 8rem"></td>
-  </tr>
+  {% include "core/includes/review_row.html" with ticked=True %}
   {% empty %}<tr><td colspan="9" class="text-muted p-3">Nothing to review.</td></tr>{% endfor %}
 </table>
 </div></div></div>
@@ -55,11 +33,6 @@
 {% block scripts %}
 <script>
 document.getElementById('all')?.addEventListener('change', e => document.querySelectorAll('.ok').forEach(c => c.checked = e.target.checked));
-document.querySelectorAll('select.cat').forEach(sel => sel.addEventListener('change', () => {
-  const row = sel.closest('tr');
-  row.querySelector('.spend').hidden = sel.value !== 'expense';
-  row.querySelector('.inv').hidden = !['investment', 'inv_return'].includes(sel.value);
-  row.querySelector('.party').hidden = !['reimbursable', 'reimbursement'].includes(sel.value);
-}));
 </script>
+{% include "core/includes/review_row_js.html" %}
 {% endblock %}

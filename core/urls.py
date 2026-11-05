@@ -64,6 +64,7 @@ urlpatterns += [
     path("statements/review/save/", st_views.review_save, name="statements_review_save"),
     path("spending/", st_views.spending_view, name="spending"),
     path("spending/adopt/", st_views.spending_adopt, name="spending_adopt"),
+    path("spending/<int:year>/<int:month>/", st_views.spending_month, name="spending_month"),
 ]
 
 from loans import views as loan_views  # noqa: E402

@@ -1,0 +1,24 @@
+{% load money %}
+<tr {% if not t.category %}class="table-warning"{% elif t.confirmed %}class="table-light"{% endif %}>
+  <td><input type="hidden" name="txn" value="{{ t.id }}">{% if not t.confirmed %}<input type="checkbox" name="ok_{{ t.id }}" class="ok"{% if ticked %} checked{% endif %}>{% else %}✓{% endif %}</td>
+  <td class="text-nowrap">{{ t.date|date:"j M y" }}</td>
+  <td class="small">{{ t.account.name }}</td>
+  <td class="desc" title="{{ t.description }}">{{ t.description }}{% if t.matched_with %}<div class="small text-muted">↔ {{ t.matched_with.account }}{% if t.category == "reimbursable" or t.category == "reimbursement" %} · {{ t.matched_with.date|date:"j M" }}{% endif %}</div>{% endif %}</td>
+  <td class="num {{ t.amount|tone }}">{{ t.amount|inr_signed }}</td>
+  <td><select name="cat_{{ t.id }}" class="form-select form-select-sm cat">
+    <option value="" {% if not t.category %}selected{% endif %}>— choose —</option>
+    {% for v, l in categories %}<option value="{{ v }}" {% if t.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select></td>
+  <td>
+    <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" %}hidden{% endif %}>
+      {% for v, l in spend_categories %}<option value="{{ v }}" {% if t.spend_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    <input name="party_{{ t.id }}" value="{{ t.party }}" class="form-control form-control-sm party" placeholder="Who reimburses? e.g. Flourish" {% if t.category != "reimbursable" and t.category != "reimbursement" %}hidden{% endif %}>
+    <select name="inv_{{ t.id }}" class="form-select form-select-sm inv" {% if t.category != "investment" and t.category != "inv_return" %}hidden{% endif %}>
+      <option value="">— which account? —</option>
+      {% for a in investment_accounts %}<option value="{{ a.id }}" {% if t.investment_account_id == a.id %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+  </td>
+  <td class="small text-muted">{{ t.get_source_display }}</td>
+  <td class="text-nowrap"><input type="checkbox" name="rem_{{ t.id }}"> <input name="kw_{{ t.id }}" value="{{ t.keyword_guess }}" class="form-control form-control-sm d-inline-block" style="width: 8rem"></td>
+</tr>

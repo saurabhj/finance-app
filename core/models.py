@@ -379,6 +379,7 @@ class Category(models.TextChoices):
     LOAN_EMI = "loan_emi", "Loan EMI"
     INCOME = "income", "Income (salary, interest…)"
     EXPENSE = "expense", "Spending"
+    HOME = "home", "Home purchase & renovation"
     REFUND = "refund", "Refund / cashback"
     REIMBURSABLE = "reimbursable", "Paid for work (reimbursable)"
     REIMBURSEMENT = "reimbursement", "Reimbursement received"

@@ -131,6 +131,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000  # a month of editable transactions is one form
+
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # Serve app CSS/JS from the app folders directly (no collectstatic step needed on the Mac mini)

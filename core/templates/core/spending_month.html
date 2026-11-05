@@ -1,0 +1,65 @@
+{% extends "core/base.html" %}
+{% load money %}
+{% block head %}<style>
+.rv td { padding-top: 3px !important; padding-bottom: 3px !important; }
+.rv tr.grp td { padding-top: 10px !important; padding-bottom: 6px !important; font-weight: 600; background: var(--bs-tertiary-bg, transparent); }
+.month-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+</style>{% endblock %}
+{% block page_title %}Spending · {{ month|date:"F Y" }}{% endblock %}
+{% block page_title_bar %}<a href="{% url 'spending' %}">Spending</a> / {{ month|date:"F Y" }} <span class="text-muted fw-normal small ms-2"><span class="kbd">j</span> <span class="kbd">k</span> move · <span class="kbd">x</span> tick · <span class="kbd">c</span> category · <span class="kbd">⌘↵</span> save</span>{% endblock %}
+{% block page_actions %}
+  {% if prev_month %}<a class="btn btn-sm" href="{% url 'spending_month' prev_month.year prev_month.month %}">‹ {{ prev_month|date:"M Y" }}</a>{% endif %}
+  {% if next_month %}<a class="btn btn-sm" href="{% url 'spending_month' next_month.year next_month.month %}">{{ next_month|date:"M Y" }} ›</a>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <div class="kpi-label">Spending in {{ month|date:"F Y" }}</div>
+  <div class="kpi">{{ spend|inr }}{% if emi %} <span class="fs-6 text-muted">+ {{ emi|inr }} EMI</span>{% endif %}{% if home %} <span class="fs-6 text-muted">· {{ home|inr }} home &amp; renovation, not counted</span>{% endif %}</div>
+  <div class="small text-muted mb-2">{{ count }} entr{{ count|pluralize:"y,ies" }}, {{ unconfirmed }} still to confirm.{% if missing %} <span class="text-warning">Statements don't cover the whole month for: {% for a in missing %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</div>
+  <div class="month-chips">{% for g in groups %}<a class="btn btn-sm" href="#g-{{ g.key }}">{{ g.label }} {{ g.total|inr }}</a>{% endfor %}</div>
+</div></div>
+{% if groups %}
+<div class="d-flex gap-2 align-items-center mb-2">
+  <a class="btn btn-sm" href="?{% if not unconfirmed_only %}show=unconfirmed{% endif %}{% if by_date %}{% if not unconfirmed_only %}&{% endif %}sort=date{% endif %}">{% if unconfirmed_only %}Show all entries{% else %}Only unconfirmed{% endif %}</a>
+  <a class="btn btn-sm" href="?{% if unconfirmed_only %}show=unconfirmed{% endif %}{% if not by_date %}{% if unconfirmed_only %}&{% endif %}sort=date{% endif %}">{% if by_date %}Largest first{% else %}By date{% endif %}</a>
+  <span class="small text-muted">Change a category and it's saved with the button below, ticked or not. Tick a row, or a whole category, to confirm it.</span>
+</div>
+<form method="post" action="{% url 'statements_review_save' %}" data-primary id="month-form">{% csrf_token %}
+<input type="hidden" name="next" value="{{ request.get_full_path }}">
+<div class="card"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-sm table-hover rv mb-0" data-rows>
+  <thead><tr><th><input type="checkbox" id="all" title="Tick everything"></th><th>Date</th><th>Account</th><th>Description</th><th class="num">Amount</th><th>Category</th><th>Spend type / investment account</th><th>Guess by</th><th>Remember as</th></tr></thead>
+  {% for g in groups %}{% if g.rows %}
+  <tbody>
+    <tr class="grp" id="g-{{ g.key }}"><td class="empty-row"><input type="checkbox" class="grp-all" title="Tick all in {{ g.label }}" aria-label="Tick all in {{ g.label }}"></td><td colspan="3">{{ g.label }} <span class="small text-muted fw-normal">{{ g.count }} entr{{ g.count|pluralize:"y,ies" }}{% if g.unconfirmed %}, {{ g.unconfirmed }} to confirm{% endif %}</span></td><td class="num">{{ g.total|inr }}</td><td colspan="4"></td></tr>
+    {% for t in g.rows %}{% include "core/includes/review_row.html" %}{% endfor %}
+  </tbody>
+  {% endif %}{% endfor %}
+</table>
+</div></div></div>
+<button class="btn btn-primary mt-3">Save &amp; confirm ticked <span class="kbd">⌘↵</span></button>
+</form>
+{% else %}
+<div class="alert alert-light border">No spending recorded for this month.</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const tick = (root, on) => root.querySelectorAll('.ok').forEach(c => c.checked = on);
+document.getElementById('all')?.addEventListener('change', e => {
+  tick(document, e.target.checked);
+  document.querySelectorAll('.grp-all').forEach(c => c.checked = e.target.checked);
+});
+document.querySelectorAll('.grp-all').forEach(c => c.addEventListener('change', () => tick(c.closest('tbody'), c.checked)));
+document.querySelectorAll('.month-chips a').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  document.querySelector(a.getAttribute('href'))?.scrollIntoView({block: 'start', behavior: 'instant'});
+}));
+// come back to the same spot after saving
+const spot = 'ff-month-scroll:' + location.pathname;
+document.getElementById('month-form')?.addEventListener('submit', () => sessionStorage.setItem(spot, scrollY));
+const y = sessionStorage.getItem(spot);
+if (y) { sessionStorage.removeItem(spot); scrollTo({top: +y, behavior: 'instant'}); }
+</script>
+{% include "core/includes/review_row_js.html" %}
+{% endblock %}
