@@ -16,17 +16,17 @@
     </form>
   </div></div></div>
   <div class="col-lg-8"><div class="card"><div class="card-body">
-    <table class="table table-sm table-hover mb-0" data-rows>
-      <thead><tr><th>Date</th><th>Account</th><th class="num">Amount</th><th>Type</th><th>From</th><th>Note</th><th></th></tr></thead>
+    <table class="table table-sm table-hover mb-0" data-rows data-sort data-filter>
+      <thead><tr><th>Date</th><th data-facet>Account</th><th class="num">Amount</th><th data-facet>Type</th><th data-facet>From</th><th>Note</th><th></th></tr></thead>
       {% for f in flows %}
       <tr>
-        <td>{{ f.date|date:"j M Y" }}</td><td>{{ f.account }}</td>
-        <td class="num {{ f.amount|tone }}">{{ f.amount|inr_signed }}</td>
+        <td data-v="{{ f.date|date:"Y-m-d" }}">{{ f.date|date:"j M Y" }}</td><td>{{ f.account }}</td>
+        <td class="num {{ f.amount|tone }}" data-v="{{ f.amount }}">{{ f.amount|inr_signed }}</td>
         <td>{{ f.get_kind_display }}</td><td class="small">{{ f.from_account.name|default:"" }}</td>
         <td class="small text-muted">{{ f.note }}</td>
         <td><form method="post" action="{% url 'cashflow_delete' f.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm text-danger p-0">×</button></form></td>
       </tr>
-      {% empty %}<tr><td colspan="7" class="text-muted">Nothing recorded yet.</td></tr>
+      {% empty %}<tr><td colspan="7" class="text-muted empty-row">Nothing recorded yet.</td></tr>
       {% endfor %}
     </table>
   </div></div></div>

@@ -1,21 +1,29 @@
 <aside class="sidebar">
-  <a class="brand" href="{% url 'dashboard' %}"><span class="dot"></span>Family Finance</a>
-  <button class="search-trigger" data-open-palette type="button"><span>Search or jump to…</span><span class="kbd">⌘K</span></button>
+  <div class="brand-row">
+    <a class="brand" href="{% url 'dashboard' %}" title="Family Finance"><span class="dot"></span><span class="label">Family Finance</span></a>
+    <button class="icon-btn" type="button" data-toggle-sidebar title="Collapse menu ( [ )" aria-label="Collapse or expand the menu">{% include "core/includes/icon.html" with name="panel" %}</button>
+  </div>
+  <button class="search-trigger" data-open-palette type="button" title="Search or jump to… (⌘K)">{% include "core/includes/icon.html" with name="search" %}<span class="label">Search or jump to…</span><span class="kbd label">⌘K</span></button>
   {% for section in nav_sections %}
   <nav>
-    <div class="nav-section-title">{{ section.title }}</div>
+    <div class="nav-section-title"><span class="label">{{ section.title }}</span></div>
     {% for item in section.items %}
-      <a class="nav-item-link{% if item.active %} active{% endif %}" href="{{ item.url }}" {% if item.key %}title="g then {{ item.key }}"{% endif %}>
-        <span>{{ item.label }}</span>{% if item.badge %}<span class="count">{{ item.badge }}</span>{% endif %}
+      <a class="nav-item-link{% if item.active %} active{% endif %}" href="{{ item.url }}"
+         {% if item.new_tab %}target="_blank" rel="noopener"{% endif %}
+         title="{{ item.label }}{% if item.key %} (g then {{ item.key }}){% endif %}{% if item.new_tab %} · opens in a new tab{% endif %}">
+        {% include "core/includes/icon.html" with name=item.icon %}
+        <span class="label">{{ item.label }}</span>
+        {% if item.new_tab %}<span class="trail label">{% include "core/includes/icon.html" with name="external" %}</span>{% endif %}
+        {% if item.badge %}<span class="count">{{ item.badge }}</span>{% endif %}
       </a>
     {% endfor %}
   </nav>
   {% endfor %}
   <div class="sidebar-foot">
-    <span>{{ user.username }}</span>
-    <span>
-      <button class="linkish" type="button" onclick="document.getElementById('shortcuts').classList.add('open')" title="Keyboard shortcuts">?</button>
-      <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}<button class="linkish ms-2">Log out</button></form>
+    <span class="label">{{ user.username }}</span>
+    <span class="foot-actions">
+      <button class="linkish" type="button" onclick="document.getElementById('shortcuts').classList.add('open')" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">{% include "core/includes/icon.html" with name="help" %}</button>
+      <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}<button class="linkish" title="Log out" aria-label="Log out">{% include "core/includes/icon.html" with name="logout" %}</button></form>
     </span>
   </div>
 </aside>

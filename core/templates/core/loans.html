@@ -21,21 +21,21 @@
 </div>
 
 <div class="card"><div class="card-body p-0">
-<table class="table table-hover" data-rows>
+<table class="table table-hover" data-rows data-sort>
   <thead><tr><th>Loan</th><th>Owner</th><th>Rate</th><th class="num">EMI</th><th class="num">Outstanding</th><th style="width:16%">Repaid</th><th class="num">Interest paid</th><th class="num">Interest left</th><th class="num">Prepaid</th><th class="num">Ends</th></tr></thead>
   <tbody>
   {% for x in loans %}{% with l=x.loan s=x.sch %}
   <tr>
-    <td><a href="{% url 'loan_detail' l.pk %}">{{ l.account.name }}</a><div class="small text-muted">{{ l.lender|default:l.get_loan_type_display }}</div></td>
+    <td data-v="{{ l.account.name }}"><a href="{% url 'loan_detail' l.pk %}">{{ l.account.name }}</a><div class="small text-muted">{{ l.lender|default:l.get_loan_type_display }}</div></td>
     <td>{{ l.account.owner }}</td>
-    <td>{{ s.current.rate|rate }} <span class="text-muted small">{{ l.get_rate_type_display|lower }}</span></td>
+    <td data-v="{{ s.current.rate }}">{{ s.current.rate|rate }} <span class="text-muted small">{{ l.get_rate_type_display|lower }}</span></td>
     <td class="num">{{ s.current.emi|inr }}</td>
     <td class="num">{{ s.outstanding|inr }}</td>
-    <td>{% include "core/includes/bar.html" with frac=s.pct_repaid %}</td>
+    <td data-v="{{ s.pct_repaid }}">{% include "core/includes/bar.html" with frac=s.pct_repaid %}</td>
     <td class="num">{{ s.interest_paid|inr }}</td>
     <td class="num">{{ s.interest_remaining|inr }}</td>
     <td class="num">{% if s.prepaid %}{{ s.prepaid|inr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-    <td class="num">{{ s.payoff_date|date:"M Y" }}<div class="small text-muted">{{ s.months_left }} months</div></td>
+    <td class="num" data-v="{{ s.payoff_date|date:"Y-m-d" }}">{{ s.payoff_date|date:"M Y" }}<div class="small text-muted">{{ s.months_left }} months</div></td>
   </tr>
   {% endwith %}{% endfor %}
   </tbody>

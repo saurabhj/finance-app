@@ -51,15 +51,15 @@
 </div></div>
 
 <div class="card"><div class="card-body p-0">
-  <table class="table table-hover" data-rows>
+  <table class="table table-hover" data-rows data-sort>
     <thead><tr><th>Date</th><th class="num">Net worth</th><th class="num">Change</th><th class="num">Invested</th><th class="num">Market gain</th><th class="num">%</th><th class="num">Cash in bank</th><th></th></tr></thead>
     <tbody>
     {% for p in periods %}
       <tr>
-        <td>{{ p.snapshot.date|date:"j M Y" }}{% if not p.flows_tracked %} <span class="badge">imported</span>{% endif %}</td>
+        <td data-v="{{ p.snapshot.date|date:"Y-m-d" }}">{{ p.snapshot.date|date:"j M Y" }}{% if not p.flows_tracked %} <span class="badge">imported</span>{% endif %}</td>
         <td class="num">{{ p.net_worth|inr }}</td>
         <td class="num {{ p.change|tone }}">{{ p.change|inr_signed }}</td>
-        <td class="num">{% if p.market_gain is not None %}{{ p.investments.invested|inr_signed }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="num" data-v="{% if p.market_gain is not None %}{{ p.investments.invested }}{% endif %}">{% if p.market_gain is not None %}{{ p.investments.invested|inr_signed }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="num {{ p.market_gain|tone }}">{{ p.market_gain|inr_signed }}</td>
         <td class="num {{ p.market_gain|tone }}">{{ p.market_gain_pct|pct }}</td>
         <td class="num">{{ p.cash.closing|inr }}</td>

@@ -10,25 +10,13 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ai.review import ReviewError
-from core.models import (Account, AssetClass, Category, CategoryRule, Household, SpendCategory, StatementUpload,
+from core.models import (Account, Category, CategoryRule, Household, SpendCategory, StatementUpload,
                          Transaction, UploadBatch)
 
 from . import batch as batches
 from . import importer, matching, rules, spending
 
 MAX_UPLOAD = 25 * 1024 * 1024
-
-
-class AccountForm(forms.ModelForm):
-    class Meta:
-        model = Account
-        fields = ["owner", "name", "institution", "kind", "match_hints"]
-
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
-        self.fields["kind"].choices = [("bank", "Bank account"), ("card", "Credit card")]
-        for f in self.fields.values():
-            f.widget.attrs["class"] = "form-select form-select-sm" if isinstance(f.widget, forms.Select) else "form-control form-control-sm"
 
 
 class RuleForm(forms.ModelForm):
@@ -67,7 +55,6 @@ def home(request):
         "unconfirmed": Transaction.objects.filter(confirmed=False).count(),
         "user_rules": CategoryRule.objects.filter(is_builtin=False).select_related("target_account"),
         "batches": UploadBatch.objects.all()[:8],
-        "account_form": AccountForm(),
         "rule_form": RuleForm(),
         "notes": Household.get().categorization_notes,
     })
@@ -102,20 +89,6 @@ def reapply(request):
     n = importer.reapply_rules()
     messages.success(request, f"{n} unconfirmed transaction{'s' if n != 1 else ''} re-tagged by rules.")
     return redirect("statements_review")
-
-
-@login_required
-@require_POST
-def add_account(request):
-    form = AccountForm(request.POST)
-    if form.is_valid():
-        acc = form.save(commit=False)
-        acc.asset_class = AssetClass.CASH if acc.kind == "bank" else AssetClass.LIABILITY
-        acc.save()
-        messages.success(request, f"Added {acc}.")
-    else:
-        messages.error(request, "Couldn't add that account: " + "; ".join(f"{k}: {v[0]}" for k, v in form.errors.items()))
-    return redirect("statements")
 
 
 @login_required
@@ -187,18 +160,6 @@ def batch_assign(request, pk):
 
 @login_required
 @require_POST
-def save_hints(request):
-    for acc in _statement_accounts():
-        key = f"hints_{acc.id}"
-        if key in request.POST:
-            acc.match_hints = request.POST[key].strip()[:200]
-            acc.save(update_fields=["match_hints"])
-    messages.success(request, "Account numbers saved.")
-    return redirect(reverse("statements") + "#accounts")
-
-
-@login_required
-@require_POST
 def delete_upload(request, pk):
     stmt = get_object_or_404(StatementUpload, pk=pk)
     with db_tx.atomic():
@@ -226,7 +187,15 @@ def review(request):
         qs = qs.filter(account_id=request.GET["account"])
     if request.GET.get("category") is not None and request.GET.get("category") != "all":
         qs = qs.filter(category=request.GET["category"])
-    page = Paginator(qs.order_by("-date", "id"), 150).get_page(request.GET.get("page"))
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(_search(q))
+    sort = request.GET.get("sort", "-date")
+    if sort.lstrip("-") not in REVIEW_SORTS:
+        sort = "-date"
+    field = REVIEW_SORTS[sort.lstrip("-")]
+    order = [f"-{f}" if sort.startswith("-") else f for f in field] + ["id"]
+    page = Paginator(qs.order_by(*order), 150).get_page(request.GET.get("page"))
     for t in page:
         t.keyword_guess = rules.keyword_guess(t.description)
     return render(request, "core/statement_review.html", {
@@ -234,7 +203,54 @@ def review(request):
         "categories": Category.choices, "spend_categories": SpendCategory.choices,
         "investment_accounts": Account.investment_accounts().filter(is_active=True).select_related("owner"),
         "filter_account": request.GET.get("account", ""), "filter_category": request.GET.get("category", "all"),
+        "q": q, "sort": sort, "sort_links": _sort_links(request, sort),
+        "page_query": _without_page(request),
     })
+
+
+def _without_page(request):
+    params = request.GET.copy()
+    params.pop("page", None)
+    return params.urlencode()
+
+
+# column key -> model fields it orders by
+REVIEW_SORTS = {"date": ["date"], "account": ["account__name"], "description": ["description"],
+                "amount": ["amount"], "category": ["category"]}
+
+
+def _search(q):
+    """Every word must appear in the description, party or account name; a number also matches the amount."""
+    from decimal import Decimal, InvalidOperation
+
+    from django.db.models import Q
+    cond = Q()
+    for word in q.split():
+        w = Q(description__icontains=word) | Q(party__icontains=word) | Q(account__name__icontains=word)
+        try:
+            n = Decimal(word.replace(",", "").replace("₹", ""))
+            w |= Q(amount=n) | Q(amount=-n)
+        except InvalidOperation:
+            pass
+        cond &= w
+    return cond
+
+
+def _sort_links(request, current):
+    """Header link for each sortable column: same filters, first page, direction toggled when already sorted."""
+    links = {}
+    for key in REVIEW_SORTS:
+        params = request.GET.copy()
+        params.pop("page", None)
+        default_desc = key in ("date", "amount")
+        if current.lstrip("-") == key:
+            params["sort"] = key if current.startswith("-") else f"-{key}"
+            arrow = "↓" if current.startswith("-") else "↑"
+        else:
+            params["sort"] = f"-{key}" if default_desc else key
+            arrow = ""
+        links[key] = {"url": "?" + params.urlencode(), "arrow": arrow}
+    return links
 
 
 @login_required

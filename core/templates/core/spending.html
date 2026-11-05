@@ -38,12 +38,12 @@
 {% endif %}
 <div class="card mb-3"><div class="card-body"><h6>By category</h6><div class="chart-box"><canvas id="spendChart"></canvas></div></div></div>
 <div class="card"><div class="card-body p-0">
-  <table class="table table-sm table-hover mb-0" data-rows>
-    <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th>Biggest categories</th><th>Coverage</th></tr></thead>
+  <table class="table table-sm table-hover mb-0" data-rows data-sort>
+    <thead><tr><th>Month</th><th class="num">Spending</th><th class="num">EMI</th><th data-nosort>Biggest categories</th><th>Coverage</th></tr></thead>
     {% for r in rows %}
     <tr>
-      <td>{{ r.month|date:"M Y" }}</td>
-      <td class="num">{{ r.spend|inr }}{% if r.unconfirmed %}<div class="small text-muted">{{ r.unconfirmed|inr }} unconfirmed</div>{% endif %}</td>
+      <td data-v="{{ r.month|date:"Y-m-d" }}">{{ r.month|date:"M Y" }}</td>
+      <td class="num" data-v="{{ r.spend }}">{{ r.spend|inr }}{% if r.unconfirmed %}<div class="small text-muted">{{ r.unconfirmed|inr }} unconfirmed</div>{% endif %}</td>
       <td class="num">{{ r.emi|inr }}</td>
       <td class="small">{% for c, v in r.by_cat.items %}{% if forloop.counter <= 4 %}{{ c }} {{ v|inr }}{% if not forloop.last and forloop.counter < 4 %} · {% endif %}{% endif %}{% endfor %}</td>
       <td class="small">{% if r.complete %}<span class="text-success">complete</span>{% else %}<span class="text-warning">missing: {% for a in r.missing %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>

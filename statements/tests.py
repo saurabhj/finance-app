@@ -300,6 +300,27 @@ class PageTests(Setup):
         User.objects.create_user("u", password="pw")
         self.client.login(username="u", password="pw")
 
+    def test_review_search_and_sort(self):
+        st = StatementUpload.objects.create(account=self.bank, filename="t.csv", sha256="x", parser="table")
+        mk = lambda d, desc, amt: Transaction.objects.create(
+            statement=st, account=self.bank, date=dt.date(2026, 10, d), description=desc, amount=D(amt),
+            dedupe_key=f"k{d}{desc}")
+        mk(1, "SWIGGY ORDER", "-450"), mk(2, "AMAZON PAY", "-1200"), mk(3, "SALARY ACME", "250000")
+        page = self.client.get("/statements/review/?status=all&q=swiggy")
+        self.assertContains(page, "SWIGGY ORDER")
+        self.assertNotContains(page, "AMAZON PAY")
+        self.assertContains(self.client.get("/statements/review/?status=all&q=1,200"), "AMAZON PAY")  # amount match
+        page = self.client.get("/statements/review/?status=all&sort=amount")
+        self.assertEqual([t.description for t in page.context["page"]], ["AMAZON PAY", "SWIGGY ORDER", "SALARY ACME"])
+        self.assertIn("sort=-amount", page.context["sort_links"]["amount"]["url"])  # clicking again flips it
+        self.assertEqual(self.client.get("/statements/review/?sort=bogus").context["sort"], "-date")
+
+    def test_tables_are_sortable_and_filterable(self):
+        for url in ("/accounts/", "/money-moved/", "/statements/"):
+            page = self.client.get(url).content.decode()
+            self.assertIn("data-sort", page, url)
+            self.assertIn("data-filter", page, url)
+
     def test_upload_review_remember_confirm(self):
         f = SimpleUploadedFile("hdfc.csv", HDFC_CSV.replace("SWIGGY-SWIGGY@ICICI", "BLUETOKAI-BT@ICICI").encode())
         from unittest import mock
@@ -324,6 +345,37 @@ class PageTests(Setup):
         self.assertTrue(CategoryRule.objects.filter(keyword="BLUETOKAI", is_builtin=False).exists())
         self.assertContains(self.client.get("/statements/"), "BLUETOKAI")
         self.assertEqual(self.client.get("/spending/").status_code, 200)
+
+    def test_accounts_page_lists_and_edits_inline(self):
+        page = self.client.get("/accounts/")
+        self.assertContains(page, "HDFC Regalia")
+        self.assertContains(page, f'id="f-{self.bank.id}"')
+        r = self.client.post(f"/accounts/{self.bank.id}/", {
+            "name": "HDFC Salary", "institution": "HDFC Bank", "match_hints": "50100123", "is_active": "on"})
+        self.assertRedirects(r, f"/accounts/#acc-{self.bank.id}", fetch_redirect_response=False)
+        self.bank.refresh_from_db()
+        self.assertEqual((self.bank.name, self.bank.institution, self.bank.match_hints, self.bank.is_active),
+                         ("HDFC Salary", "HDFC Bank", "50100123", True))
+        # same name as another of Saurabh's accounts (any case): refused, nothing changes
+        self.client.post(f"/accounts/{self.card.id}/", {"name": "hdfc salary", "institution": "X", "is_active": "on"})
+        self.card.refresh_from_db()
+        self.assertEqual((self.card.name, self.card.institution), ("HDFC Regalia", ""))
+        # Pritika may reuse it; unticking Active archives the account
+        self.client.post(f"/accounts/{self.pbank.id}/", {"name": "HDFC Salary", "institution": "ICICI"})
+        self.pbank.refresh_from_db()
+        self.assertEqual((self.pbank.name, self.pbank.is_active), ("HDFC Salary", False))
+
+    def test_add_account(self):
+        r = self.client.post("/accounts/add/", {"owner": self.p.id, "kind": "card", "name": "SC Smart",
+                                                "institution": "Standard Chartered", "match_hints": "1234"})
+        acc = Account.objects.get(name="SC Smart")
+        self.assertRedirects(r, f"/accounts/#acc-{acc.id}", fetch_redirect_response=False)
+        self.assertEqual((acc.owner, acc.asset_class, acc.match_hints), (self.p, "liability", "1234"))
+        r = self.client.post("/accounts/add/", {"owner": self.s.id, "kind": "loan", "name": "Car loan"})
+        loan = Account.objects.get(name="Car loan")
+        self.assertRedirects(r, f"/loans/new/?account={loan.id}", fetch_redirect_response=False)
+        self.client.post("/accounts/add/", {"owner": self.s.id, "kind": "bank", "name": "Bank HDFC"})  # duplicate
+        self.assertEqual(Account.objects.filter(owner=self.s, name="Bank HDFC").count(), 1)
 
     def test_month_end_form_prefills_bank_balance(self):
         from core.views import _values_from_pulls

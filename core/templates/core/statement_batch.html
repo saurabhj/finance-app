@@ -15,7 +15,7 @@
 
 <form method="post" action="{% url 'statement_batch_assign' batch.pk %}">{% csrf_token %}
 <div class="card"><div class="card-body p-0">
-<table class="table table-sm table-hover" data-rows>
+<table class="table table-sm table-hover" data-rows data-sort>
   <thead><tr><th>File</th><th>Account</th><th>Status</th><th>Details</th></tr></thead>
   <tbody>
   {% for it in items %}

@@ -9,13 +9,13 @@
     </div>
   </div>
   <div class="table-responsive">
-  <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Holding</th><th>Class</th><th class="num">Value</th><th class="num">% of acct</th><th class="num">vs cost</th><th>Managed by</th><th>Advisor / note</th></tr></thead>
+  <table class="table table-sm align-middle mb-0" data-sort>
+    <thead><tr><th>Holding</th><th>Class</th><th class="num">Value</th><th class="num">% of acct</th><th class="num">vs cost</th><th>Managed by</th><th data-nosort>Advisor / note</th></tr></thead>
     {% for pos in b.positions %}{% with inst=pos.instrument %}
     <tr {% if inst.needs_review %}class="table-warning"{% endif %}>
-      <td>{{ inst.name|truncatechars:48 }}<div class="small text-muted">{{ inst.get_kind_display }}{% if inst.is_passive %} · passive{% endif %}</div></td>
+      <td data-v="{{ inst.name }}">{{ inst.name|truncatechars:48 }}<div class="small text-muted">{{ inst.get_kind_display }}{% if inst.is_passive %} · passive{% endif %}</div></td>
       <td class="small">{{ inst.get_asset_class_display }}</td>
-      <td class="num">{{ pos.value|inr }}</td>
+      <td class="num" data-v="{{ pos.value }}">{{ pos.value|inr }}</td>
       <td class="num text-muted">{{ pos.value|ratio:b.pull.total_value|pct_plain }}</td>
       <td class="num {{ pos|gain_pct|tone }}">{{ pos|gain_pct|pct }}</td>
       <td>

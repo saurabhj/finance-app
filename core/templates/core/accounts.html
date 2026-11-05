@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% block page_title %}Accounts{% endblock %}
+{% block page_title_bar %}Accounts{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <h6 id="add">Add an account</h6>
+  <form method="post" action="{% url 'account_add' %}" class="row g-2 align-items-center">{% csrf_token %}
+    <div class="col-md-2">{{ form.owner }}</div>
+    <div class="col-md-2">{{ form.kind }}</div>
+    <div class="col-md-3">{{ form.name }}</div>
+    <div class="col-md-2">{{ form.institution }}</div>
+    <div class="col-md-2">{{ form.match_hints }}</div>
+    <div class="col-md-1"><button class="btn btn-sm w-100">Add</button></div>
+  </form>
+  <p class="form-text mb-0 mt-2">Statement numbers let bulk uploads find the right account: the full account number, or the last 4–5 digits of a card. Separate several with commas. A new loan account takes you to the loan details next.</p>
+</div></div>
+
+{% for a in accounts %}<form id="f-{{ a.id }}" method="post" action="{% url 'account_edit' a.id %}">{% csrf_token %}</form>{% endfor %}
+<div class="card"><div class="table-responsive">
+<table class="table table-sm table-hover mb-0 inline-edit" data-rows data-sort data-filter data-row-facets="status:Status" data-default-status="Active">
+  <thead><tr><th>Name</th><th data-facet>Bank</th><th data-facet>Owner</th><th data-facet>Type</th><th>Numbers on statements</th><th class="text-end" style="width:1%" data-nosort></th></tr></thead>
+  <tbody>
+  {% for a in accounts %}
+  <tr id="acc-{{ a.id }}" data-inline data-status="{{ a.is_active|yesno:"Active,Archived" }}" class="{% if not a.is_active %}row-muted{% endif %}">
+    <td><span class="v">{{ a.name }}</span>
+      <input class="e form-control form-control-sm" form="f-{{ a.id }}" name="name" value="{{ a.name }}" required maxlength="80" aria-label="Name"></td>
+    <td data-f="{{ a.institution }}"><span class="v">{{ a.institution|default:"—" }}</span>
+      <input class="e form-control form-control-sm" form="f-{{ a.id }}" name="institution" value="{{ a.institution }}" maxlength="80" aria-label="Bank"></td>
+    <td class="text-muted">{{ a.owner.name }}</td>
+    <td class="text-muted" data-f="{{ a.get_kind_display }}" data-v="{{ a.kind_order|stringformat:"02d" }}">{{ a.get_kind_display }}{% if not a.is_active %} · archived{% endif %}</td>
+    <td><span class="v tnum">{{ a.match_hints|default:"—" }}</span>
+      <input class="e form-control form-control-sm" form="f-{{ a.id }}" name="match_hints" value="{{ a.match_hints }}" maxlength="200" aria-label="Numbers on statements" placeholder="e.g. 1234"></td>
+    <td class="text-end text-nowrap">
+      <button type="button" class="v btn btn-sm btn-ghost" data-edit>Edit <span class="kbd">e</span></button>
+      <span class="e">
+        <label class="small me-2"><input type="checkbox" form="f-{{ a.id }}" name="is_active" {% if a.is_active %}checked{% endif %}> Active</label>
+        <button class="btn btn-sm btn-primary" form="f-{{ a.id }}">Save <span class="kbd">↵</span></button>
+        <button type="button" class="btn btn-sm" data-cancel>Cancel</button>
+      </span>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6" class="text-muted empty-row">No accounts yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div>
+<p class="form-text mt-2">Click a row (or <span class="kbd">j</span>/<span class="kbd">k</span> then <span class="kbd">e</span>) to edit it; <span class="kbd">↵</span> saves, <span class="kbd">esc</span> cancels. Archived accounts drop out of forms but keep their history.</p>
+{% endblock %}

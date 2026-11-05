@@ -7,7 +7,7 @@
 <div class="row g-3 mb-4">
   <div class="col-lg-6"><div class="card h-100"><div class="card-body">
     <h6 id="upload">Upload statements</h6>
-    <p class="small text-muted mb-2">Drop any number of bank and card statements at once (CSV, Excel, PDF, or a ZIP of them). Each file is matched to its account using the numbers listed under <a href="#accounts">Accounts</a>. They're read in the background: CSV/Excel on this Mac, PDFs by Claude, checked against the printed totals.</p>
+    <p class="small text-muted mb-2">Drop any number of bank and card statements at once (CSV, Excel, PDF, or a ZIP of them). Each file is matched to its account using the statement numbers on the <a href="{% url 'accounts' %}">Accounts</a> page. They're read in the background: CSV/Excel on this Mac, PDFs by Claude, checked against the printed totals.</p>
     <form method="post" action="{% url 'statement_upload' %}" enctype="multipart/form-data">{% csrf_token %}
       <input type="file" name="files" multiple accept=".pdf,.csv,.xls,.xlsx,.zip" class="form-control form-control-sm mb-2" required>
       <div class="row g-2 mb-2">
@@ -20,8 +20,10 @@
       <button class="btn btn-sm btn-primary">Upload</button>
       <span class="form-text ms-2">Passwords are tried on each PDF and deleted when the batch finishes.</span>
     </form>
+  </div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+    <h6>Recent uploads</h6>
     {% if batches %}
-    <h6 class="mt-3">Recent uploads</h6>
     <table class="table table-sm mb-0">
       {% for b in batches %}{% with c=b.counts %}
       <tr><td class="small"><a href="{% url 'statement_batch' b.pk %}">{{ b.created_at|date:"j M, H:i" }}</a></td>
@@ -29,28 +31,8 @@
         <td class="small">{% if b.status == "done" %}<span class="text-success">done</span>{% elif b.status == "waiting" %}<span class="text-warning">needs you</span>{% else %}{{ b.status }}…{% endif %}</td></tr>
       {% endwith %}{% endfor %}
     </table>
-    {% endif %}
-  </div></div></div>
-  <div class="col-lg-6"><div class="card h-100"><div class="card-body">
-    <h6 id="accounts">Accounts</h6>
-    <form method="post" action="{% url 'statement_hints' %}">{% csrf_token %}
-      <table class="table table-sm mb-2">
-        <thead><tr><th>Account</th><th>Numbers on its statements</th></tr></thead>
-        {% for a in accounts %}<tr><td class="small">{{ a }} <span class="text-muted">· {{ a.get_kind_display|lower }}</span></td>
-          <td><input name="hints_{{ a.id }}" value="{{ a.match_hints }}" class="form-control form-control-sm" placeholder="e.g. 1234 or the full account number"></td></tr>{% endfor %}
-      </table>
-      <button class="btn btn-sm">Save numbers</button>
-      <span class="form-text ms-1">Full account number or the last 4–5 digits of a card; comma-separate several.</span>
-    </form>
-    <h6 class="mt-3">Add a bank account or credit card</h6>
-    <form method="post" action="{% url 'statement_add_account' %}" class="row g-2">{% csrf_token %}
-      <div class="col-6">{{ account_form.owner }}</div>
-      <div class="col-6">{{ account_form.kind }}</div>
-      <div class="col-6"><input name="name" class="form-control form-control-sm" placeholder="Name, e.g. HDFC Regalia" required></div>
-      <div class="col-6"><input name="institution" class="form-control form-control-sm" placeholder="Bank, e.g. HDFC"></div>
-      <div class="col-12"><input name="match_hints" class="form-control form-control-sm" placeholder="Account / card number on its statements (optional)"></div>
-      <div class="col-12"><button class="btn btn-sm">Add</button></div>
-    </form>
+    {% else %}<p class="small text-muted mb-0">Nothing uploaded yet.</p>{% endif %}
+    <p class="form-text mb-0 mt-2">A new bank account or card? <a href="{% url 'accounts' %}#add">Add it on Accounts</a> with the number printed on its statements.</p>
   </div></div></div>
 </div>
 <div class="row g-3 mb-4">
@@ -87,18 +69,18 @@
 </div>
 <div class="card"><div class="card-body">
   <h6>Uploaded</h6>
-  <table class="table table-sm table-hover mb-0" data-rows>
-    <thead><tr><th>Uploaded</th><th>Account</th><th>File</th><th>Period</th><th class="num">Added</th><th>Read by</th><th></th></tr></thead>
+  <table class="table table-sm table-hover mb-0" data-rows data-sort data-filter>
+    <thead><tr><th>Uploaded</th><th data-facet>Account</th><th>File</th><th>Period</th><th class="num">Added</th><th data-facet>Read by</th><th></th></tr></thead>
     {% for s in uploads %}
     <tr>
-      <td class="small">{{ s.uploaded_at|date:"j M Y" }}</td><td class="small">{{ s.account }}</td>
+      <td class="small" data-v="{{ s.uploaded_at|date:"Y-m-d H:i" }}">{{ s.uploaded_at|date:"j M Y" }}</td><td class="small">{{ s.account }}</td>
       <td class="small">{{ s.filename|truncatechars:40 }}{% if s.warning %} <span class="badge text-bg-warning" title="{{ s.warning }}">check</span>{% endif %}</td>
-      <td class="small">{{ s.period_start|date:"j M" }} – {{ s.period_end|date:"j M Y" }}</td>
-      <td class="num small">{{ s.added }}{% if s.duplicates %} <span class="text-muted">(+{{ s.duplicates }} dup)</span>{% endif %}</td>
+      <td class="small" data-v="{{ s.period_end|date:"Y-m-d" }}">{{ s.period_start|date:"j M" }} – {{ s.period_end|date:"j M Y" }}</td>
+      <td class="num small" data-v="{{ s.added }}">{{ s.added }}{% if s.duplicates %} <span class="text-muted">(+{{ s.duplicates }} dup)</span>{% endif %}</td>
       <td class="small">{% if s.parser == "claude" %}Claude{% else %}This Mac{% endif %}</td>
       <td><form method="post" action="{% url 'statement_delete' s.pk %}" onsubmit="return confirm('Delete this statement and its transactions?')">{% csrf_token %}<button class="btn btn-link btn-sm text-danger p-0">delete</button></form></td>
     </tr>
-    {% empty %}<tr><td colspan="7" class="small text-muted">Nothing uploaded yet.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="7" class="small text-muted empty-row">Nothing uploaded yet.</td></tr>{% endfor %}
   </table>
 </div></div>
 {% endblock %}
