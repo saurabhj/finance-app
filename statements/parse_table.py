@@ -16,7 +16,7 @@ DESC_COLS = ["narration", "description", "particulars", "transaction details", "
 DEBIT_COLS = ["withdrawal amt", "withdrawal amount", "withdrawal", "withdrawals", "debit amount", "debit", "dr", "amount dr"]
 CREDIT_COLS = ["deposit amt", "deposit amount", "deposit", "deposits", "credit amount", "credit", "cr", "amount cr"]
 AMOUNT_COLS = ["amount", "transaction amount", "amount (inr)", "amount(inr)", "amt"]
-TYPE_COLS = ["debit /credit", "debit/credit", "dr/cr", "cr/dr", "billingamountsign", "cr/dr indicator", "type"]
+TYPE_COLS = ["debit / credit", "debit /credit", "debit/credit","dr/cr", "cr/dr", "billingamountsign", "cr/dr indicator", "type"]
 BALANCE_COLS = ["closing balance", "balance", "available balance", "running balance"]
 
 DATE_FORMATS = ["%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %b %y",
@@ -82,6 +82,9 @@ def find_header(rows):
         cols = {"date": d, "desc": desc, "debit": _find(header, DEBIT_COLS), "credit": _find(header, CREDIT_COLS),
                 "amount": _find(header, AMOUNT_COLS), "type": _find(header, TYPE_COLS),
                 "balance": _find(header, BALANCE_COLS)}
+        for side in ("debit", "credit"):  # a "Debit / Credit" marker column is not an amount column
+            if cols[side] == cols["type"]:
+                cols[side] = None
         if (cols["debit"] is not None and cols["credit"] is not None) or cols["amount"] is not None:
             return idx, cols
     raise TableParseError("Couldn't find a header row with date, description and amount columns.")
@@ -127,7 +130,7 @@ def parse_amount(v):
 PERIOD_RE = re.compile(r"from\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}).{0,30}?to\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.I)
 
 
-STATEMENT_DATE_RE = re.compile(r"statement date\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.I)
+STATEMENT_DATE_RE = re.compile(r"statement date\W{0,6}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[ -][a-z]{3,9},?[ -]\d{2,4})", re.I)
 
 
 def find_period(rows, upto, is_card=False):
@@ -143,7 +146,7 @@ def find_period(rows, upto, is_card=False):
     if is_card:
         for line in lines:
             m = STATEMENT_DATE_RE.search(line)
-            end = parse_date(m.group(1)) if m else None
+            end = parse_date(m.group(1).replace(",", "")) if m else None
             if end:
                 prev = (end.replace(day=1) - dt.timedelta(days=1))
                 start = prev.replace(day=min(end.day, 28)) + dt.timedelta(days=1)

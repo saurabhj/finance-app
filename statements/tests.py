@@ -99,6 +99,17 @@ class TableParserTests(TestCase):
         self.assertEqual([r["amount"] for r in rows], [D("-1234.56"), D("10000.00")])
         self.assertEqual(period, (dt.date(2026, 9, 2), dt.date(2026, 10, 1)))
 
+    def test_hdfc_billed_statement_layout(self):
+        """Debit / Credit marker column (blank = debit) and a statement date written out in words."""
+        csv = ('Name,TEST USER\nPayment Due Date,"21 Nov, 2026"\nStatement Date,"01 Nov, 2026"\n\n'
+               'Transaction type,Date & Time,Description,AMT,Debit / Credit\n'
+               'Domestic,04/10/2026 12:00:00,SHOP ONE,100.00,\n'
+               'Domestic,20/10/2026 09:00:00,SHOP ONE REFUND,1.50,Cr\n'
+               'Domestic,21/10/2026 10:00:00,AUTOPAY THANK YOU,50.00,Cr\n')
+        rows, period = parse_table.parse("billed.csv", csv.encode(), is_card=True, with_period=True)
+        self.assertEqual([r["amount"] for r in rows], [D("-100.00"), D("1.50"), D("50.00")])
+        self.assertEqual(period, (dt.date(2026, 10, 2), dt.date(2026, 11, 1)))
+
     def test_ambiguous_single_amount_bank(self):
         with self.assertRaises(parse_table.TableParseError):
             parse_table.parse("x.csv", b"Date,Narration,Amount\n01/10/26,THING,100\n", is_card=False)
@@ -568,6 +579,39 @@ class ReimbursementTests(Setup):
         self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n01/06/2026,AMAZON PAY INDIA,\"4,321.09\"\n")
         self.imp(self.bank, "bank.csv", self.BANK)
         self.assertEqual(Transaction.objects.get(account=self.card).category, "expense")
+
+    def test_same_day_reimbursement_is_not_a_card_payment(self):
+        card = "Transaction Date,Details,Amount (INR)\n10/09/2026,AMAZON PAY INDIA,\"4,321.09\"\n"
+        for order in ((self.card, "c.csv", card), (self.bank, "b.csv", self.BANK)), \
+                     ((self.bank, "b.csv", self.BANK), (self.card, "c.csv", card)):
+            Transaction.objects.all().delete()
+            StatementUpload.objects.all().delete()
+            for args in order:
+                self.imp(*args)
+            paid = Transaction.objects.get(account=self.card)
+            back = Transaction.objects.get(account=self.bank, amount=D("4321.09"))
+            self.assertEqual((paid.category, back.category), ("reimbursable", "reimbursement"))
+            self.assertEqual(paid.matched_with, back)
+
+    def test_card_purchase_never_pairs_with_an_unlabelled_credit(self):
+        CategoryRule.objects.create(keyword="UPI PAY", applies_to="bank", direction="credit", category="income")
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n10/09/26,UPI/ACMECO/XX.ibz@icici/UPI Pay/I,,500.00\n")
+        self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n10/09/2026,AMAZON PAY INDIA,500.00\n")
+        paid = Transaction.objects.get(account=self.card)
+        self.assertEqual((paid.category, paid.matched_with), ("expense", None))
+
+    def test_excess_payment_refunded_from_card_to_bank_still_pairs(self):
+        CategoryRule.objects.create(keyword="EXC PY", applies_to="any", direction="any", category="transfer")
+        self.imp(self.bank, "b.csv", "Date,Narration,Debit,Credit\n22/07/26,EXC PYMT - 1234 XXXX XXXX 5678,,900.50\n")
+        self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n22/07/2026,EXC PYT REFUND TO AC 1 234,900.50\n")
+        out = Transaction.objects.get(account=self.card)
+        self.assertEqual(out.category, "card_payment")
+        self.assertEqual(out.matched_with.account, self.bank)
+
+    def test_card_can_post_a_day_after_the_reimbursement(self):
+        self.imp(self.bank, "bank.csv", self.BANK)
+        self.imp(self.card, "c.csv", "Transaction Date,Details,Amount (INR)\n11/09/2026,AMAZON PAY INDIA,\"4,321.09\"\n")
+        self.assertEqual(Transaction.objects.get(account=self.card).category, "reimbursable")
 
     def test_marking_reimbursable_by_hand_on_review_page(self):
         User.objects.create_user("u", password="pw")

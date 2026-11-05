@@ -9,6 +9,7 @@ from django.db import transaction as db_tx
 from core.models import Category, Transaction
 
 LOOKBACK_DAYS = 60
+POSTING_LAG_DAYS = 3  # a card can post a purchase after the repayment has already landed
 ZERO = Decimal("0")
 
 
@@ -19,7 +20,7 @@ def pair_reimbursements():
     made = 0
     for r in Transaction.objects.filter(category=Category.REIMBURSEMENT, matched_with__isnull=True,
                                         amount__gt=0).order_by("date"):
-        window = (r.date - dt.timedelta(days=LOOKBACK_DAYS), r.date)
+        window = (r.date - dt.timedelta(days=LOOKBACK_DAYS), r.date + dt.timedelta(days=POSTING_LAG_DAYS))
         cands = (Transaction.objects.filter(amount__gte=-r.amount - 1, amount__lte=-r.amount + 1, date__range=window,
                                             matched_with__isnull=True)
                  .filter(category__in=["", Category.EXPENSE, Category.REIMBURSABLE])

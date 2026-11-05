@@ -15,17 +15,27 @@ def _tolerance(amount):
     return max(Decimal("2"), abs(amount) * Decimal("0.0001"))
 
 
+def _money_can_move(t, other):
+    """Money leaves a card only when the bank refunds an overpayment. A purchase and a same-amount
+    credit elsewhere are someone paying you back (or a coincidence), not a transfer."""
+    out = t if t.amount < 0 else other
+    return out.account.kind != Account.Kind.CARD or "REFUND" in out.description.upper()
+
+
 def pair_transfers(txns):
     """Mark same-amount, opposite-direction pairs between family accounts as transfers / card payments."""
     changed = 0
+    pairable = PAIRABLE + (Category.CARD_PAYMENT,)
     for t in txns:
-        if t.confirmed or t.matched_with_id or t.category not in PAIRABLE + (Category.CARD_PAYMENT,):
+        if t.confirmed or t.matched_with_id or t.category not in pairable:
             continue
         window = (t.date - dt.timedelta(days=3), t.date + dt.timedelta(days=5 if t.account.kind == "card" else 3))
-        other = (Transaction.objects.filter(amount=-t.amount, date__range=window, matched_with__isnull=True)
-                 .exclude(account=t.account).exclude(pk=t.pk)
-                 .exclude(account__kind=Account.Kind.LOAN)
-                 .select_related("account").first())
+        candidates = (Transaction.objects.filter(amount=-t.amount, date__range=window, matched_with__isnull=True,
+                                                 category__in=pairable)
+                      .exclude(account=t.account).exclude(pk=t.pk)
+                      .exclude(account__kind=Account.Kind.LOAN)
+                      .select_related("account"))
+        other = next((c for c in candidates if _money_can_move(t, c)), None)
         if not other:
             continue
         card_side = "card" in (t.account.kind, other.account.kind)
