@@ -20,6 +20,9 @@ GUIDE = """Categories:
 - loan_emi: home-loan EMI. income: salary, interest, dividends. refund: refunds/cashback/reversals.
 - reimbursement: money from an employer or one's own company repaying an expense (e.g. 'AmazonReim', 'reimb').
 - reimbursable: a purchase made for work that will be repaid (only if the description says so).
+- split: a person paying back their share of a bill; also set spend_category to what the bill was for.
+- loan_given: money lent to a person or company, or repaid by them. windfall: a one-off like an inheritance or a property sale.
+- home: buying or renovating the family home (stamp duty, brokerage, interiors).
 - expense: any other spending; also set spend_category. ignore: anything that isn't money moving (e.g. 'opening balance').
 Smallcase / Weekend Investing subscription fees are expense (subscriptions), not investment."""
 

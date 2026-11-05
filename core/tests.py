@@ -114,6 +114,21 @@ class WindfallAndSwitchTests(TestCase):
         self.assertEqual(analytics.periods()[-1].investments.invested, Decimal("0"))
 
 
+class PropertyTests(TestCase):
+    def test_home_counts_in_net_worth_but_not_cash_investments_or_allocation(self):
+        p = Person.objects.create(name="P")
+        bank = Account.objects.create(owner=p, name="Bank", kind="bank", asset_class="cash")
+        home = Account.objects.create(owner=p, name="Home", kind="property", asset_class="cash")
+        snap = Snapshot.objects.create(date=dt.date(2026, 1, 1))
+        Balance.objects.create(snapshot=snap, account=bank, value=100)
+        Balance.objects.create(snapshot=snap, account=home, value=5000)
+        period = analytics.periods()[-1]
+        self.assertEqual((period.net_worth, period.cash.closing, period.investments.closing), (Decimal("5100"), Decimal("100"), Decimal("0")))
+        self.assertEqual(period.by_person["P"], Decimal("5100"))
+        self.assertEqual([a["value"] for a in analytics.allocation(snap)], [Decimal("100")])
+        self.assertFalse(home.is_investment)
+
+
 class EntryFormTests(TestCase):
     def setUp(self):
         User.objects.create_user("u", password="pw")

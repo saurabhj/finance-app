@@ -1,7 +1,7 @@
 <script>
 document.querySelectorAll('select.cat').forEach(sel => sel.addEventListener('change', () => {
   const row = sel.closest('tr');
-  row.querySelector('.spend').hidden = sel.value !== 'expense';
+  row.querySelector('.spend').hidden = !['expense', 'split'].includes(sel.value);
   row.querySelector('.inv').hidden = !['investment', 'inv_return'].includes(sel.value);
   row.querySelector('.party').hidden = !['reimbursable', 'reimbursement', 'loan_given'].includes(sel.value);
 }));

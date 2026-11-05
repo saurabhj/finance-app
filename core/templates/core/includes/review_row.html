@@ -7,10 +7,10 @@
   <td class="num {{ t.amount|tone }}">{{ t.amount|inr_signed }}</td>
   <td><select name="cat_{{ t.id }}" class="form-select form-select-sm cat">
     <option value="" {% if not t.category %}selected{% endif %}>— choose —</option>
-    {% for v, l in categories %}<option value="{{ v }}" {% if t.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    {% for group, options in category_groups %}<optgroup label="{{ group }}">{% for v, l in options %}<option value="{{ v }}" {% if t.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</optgroup>{% endfor %}
   </select></td>
   <td>
-    <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" %}hidden{% endif %}>
+    <select name="spend_{{ t.id }}" class="form-select form-select-sm spend" {% if t.category != "expense" and t.category != "split" %}hidden{% endif %}>
       {% for v, l in spend_categories %}<option value="{{ v }}" {% if t.spend_category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
     </select>
     <input name="party_{{ t.id }}" value="{{ t.party }}" class="form-control form-control-sm party" placeholder="Who owes this? e.g. Flourish" {% if t.category != "reimbursable" and t.category != "reimbursement" and t.category != "loan_given" %}hidden{% endif %}>

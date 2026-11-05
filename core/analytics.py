@@ -41,17 +41,18 @@ class Period:
     investments: Bucket = field(default_factory=Bucket)
     cash: Bucket = field(default_factory=Bucket)
     loans: Bucket = field(default_factory=Bucket)
+    real_estate: Bucket = field(default_factory=Bucket)  # counts in net worth, never in cash or the FI corpus
     by_person: dict = field(default_factory=dict)   # person name -> net worth
     by_account: dict = field(default_factory=dict)  # account id -> Bucket
     windfall: Decimal = ZERO  # one-off money in, like an inheritance: neither earned nor market gain
 
     @property
     def net_worth(self):
-        return self.investments.closing + self.cash.closing - self.loans.closing
+        return self.investments.closing + self.cash.closing + self.real_estate.closing - self.loans.closing
 
     @property
     def prev_net_worth(self):
-        return self.investments.opening + self.cash.opening - self.loans.opening
+        return self.investments.opening + self.cash.opening + self.real_estate.opening - self.loans.opening
 
     @property
     def change(self):
@@ -122,7 +123,12 @@ def periods():
                 closing=cur_vals.get(acc_id, ZERO),
             )
             p.by_account[acc_id] = b
-            target = p.loans if acc.is_liability else (p.investments if acc.is_investment else p.cash)
+            if acc.is_liability:
+                target = p.loans
+            elif acc.kind == Account.Kind.PROPERTY:
+                target = p.real_estate
+            else:
+                target = p.investments if acc.is_investment else p.cash
             target.opening += b.opening
             target.invested += b.invested
             target.closing += b.closing
@@ -142,7 +148,7 @@ def allocation(snapshot, investments_only=False):
     totals = defaultdict(lambda: ZERO)
     for bal in snapshot.balances.select_related("account", "pull"):
         acc = bal.account
-        if acc.is_liability or (investments_only and not acc.is_investment):
+        if acc.is_liability or acc.kind == Account.Kind.PROPERTY or (investments_only and not acc.is_investment):
             continue
         positions = list(bal.pull.positions.select_related("instrument")) if bal.pull else []
         pos_total = sum((p.value for p in positions), ZERO)

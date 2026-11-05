@@ -158,7 +158,7 @@ def import_statement(account, name, data, password="", client=None, pre_read=Non
     for t in new:
         if t.category in ("investment", "inv_return") and not t.investment_account_id:
             t.investment_account = guess_investment_account(t)
-        if t.category != "expense":
+        if t.category not in ("expense", "split"):
             t.spend_category = ""
         t.save()
     matching.pair_transfers([t for t in todo if t.category])

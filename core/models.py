@@ -46,8 +46,9 @@ class Account(models.Model):
         OTHER = "other", "Other investment"
         LOAN = "loan", "Loan"
         CARD = "card", "Credit card"
+        PROPERTY = "property", "Property (the home you live in)"
 
-    NON_INVESTMENT_KINDS = ("bank", "loan", "card")
+    NON_INVESTMENT_KINDS = ("bank", "loan", "card", "property")
 
     owner = models.ForeignKey(Person, on_delete=models.PROTECT, related_name="accounts")
     name = models.CharField(max_length=80)
@@ -372,20 +373,30 @@ class Recommendation(models.Model):
 # ------------------------------------------------------------------ statements
 
 class Category(models.TextChoices):
-    INVESTMENT = "investment", "Investment (money in)"
-    INVESTMENT_RETURN = "inv_return", "Investment payout (money out)"
+    INVESTMENT = "investment", "Into investments"
+    INVESTMENT_RETURN = "inv_return", "Out of investments"
     TRANSFER = "transfer", "Transfer between our accounts"
     CARD_PAYMENT = "card_payment", "Credit card bill payment"
     LOAN_EMI = "loan_emi", "Loan EMI"
     INCOME = "income", "Income (salary, interest…)"
     EXPENSE = "expense", "Spending"
     HOME = "home", "Home purchase & renovation"
-    LOAN_GIVEN = "loan_given", "Loan given (owed to us)"
-    WINDFALL = "windfall", "One-off money in (inheritance, sale)"
+    LOAN_GIVEN = "loan_given", "Loan given or repaid"
+    WINDFALL = "windfall", "One-off money in (gift, inheritance, sale)"
     REFUND = "refund", "Refund / cashback"
+    SPLIT = "split", "Friend paid their share of a bill"
     REIMBURSABLE = "reimbursable", "Paid for work (reimbursable)"
     REIMBURSEMENT = "reimbursement", "Reimbursement received"
     IGNORE = "ignore", "Ignore"
+
+
+CATEGORY_GROUPS = [
+    ("Money out", [Category.EXPENSE, Category.HOME, Category.LOAN_EMI, Category.REIMBURSABLE]),
+    ("Money in", [Category.INCOME, Category.WINDFALL, Category.REFUND, Category.SPLIT, Category.REIMBURSEMENT]),
+    ("Moving your own money", [Category.INVESTMENT, Category.INVESTMENT_RETURN, Category.TRANSFER, Category.CARD_PAYMENT,
+                               Category.LOAN_GIVEN]),
+    ("Other", [Category.IGNORE]),
+]
 
 
 class SpendCategory(models.TextChoices):

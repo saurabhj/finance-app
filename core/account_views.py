@@ -12,9 +12,9 @@ from .models import Account, AssetClass, Person
 DEFAULT_ASSET_CLASS = {
     "bank": AssetClass.CASH, "card": AssetClass.LIABILITY, "loan": AssetClass.LIABILITY,
     "fd": AssetClass.DEBT, "broker": AssetClass.EQUITY, "mf": AssetClass.EQUITY,
-    "ulip": AssetClass.HYBRID, "other": AssetClass.EQUITY,
+    "ulip": AssetClass.HYBRID, "other": AssetClass.EQUITY, "property": AssetClass.HYBRID,
 }
-KIND_ORDER = ["bank", "card", "fd", "broker", "mf", "ulip", "other", "loan"]
+KIND_ORDER = ["bank", "card", "fd", "broker", "mf", "ulip", "other", "property", "loan"]
 
 
 class AccountForm(forms.ModelForm):

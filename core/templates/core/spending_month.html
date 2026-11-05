@@ -4,14 +4,18 @@
 .rv td { padding-top: 3px !important; padding-bottom: 3px !important; }
 .rv tr.grp td { padding-top: 10px !important; padding-bottom: 6px !important; font-weight: 600; background: var(--bs-tertiary-bg, transparent); }
 .month-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.month-tabs { display: flex; gap: 6px; }
+.rv tr:has(.ok:checked) > td { background: color-mix(in srgb, var(--pos) 16%, transparent) !important; }
+.rv tr.table-light > td { background: color-mix(in srgb, var(--pos) 7%, transparent) !important; }
 </style>{% endblock %}
 {% block page_title %}Spending · {{ month|date:"F Y" }}{% endblock %}
 {% block page_title_bar %}<a href="{% url 'spending' %}">Spending</a> / {{ month|date:"F Y" }} <span class="text-muted fw-normal small ms-2"><span class="kbd">j</span> <span class="kbd">k</span> move · <span class="kbd">x</span> tick · <span class="kbd">c</span> category · <span class="kbd">⌘↵</span> save</span>{% endblock %}
 {% block page_actions %}
-  {% if prev_month %}<a class="btn btn-sm" href="{% url 'spending_month' prev_month.year prev_month.month %}">‹ {{ prev_month|date:"M Y" }}</a>{% endif %}
-  {% if next_month %}<a class="btn btn-sm" href="{% url 'spending_month' next_month.year next_month.month %}">{{ next_month|date:"M Y" }} ›</a>{% endif %}
+  {% if prev_month %}<a class="btn btn-sm" href="{% url 'spending_month' prev_month.year prev_month.month %}{% if query %}?{{ query }}{% endif %}">‹ {{ prev_month|date:"M Y" }}</a>{% endif %}
+  {% if next_month %}<a class="btn btn-sm" href="{% url 'spending_month' next_month.year next_month.month %}{% if query %}?{{ query }}{% endif %}">{{ next_month|date:"M Y" }} ›</a>{% endif %}
 {% endblock %}
 {% block content %}
+<div class="month-tabs mb-2">{% for tab in tabs %}<a class="btn btn-sm{% if tab.active %} btn-primary{% endif %}" href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}</a>{% endfor %}</div>
 <div class="card mb-3"><div class="card-body">
   <div class="kpi-label">Spending in {{ month|date:"F Y" }}</div>
   <div class="kpi">{{ spend|inr }}{% if emi %} <span class="fs-6 text-muted">+ {{ emi|inr }} EMI</span>{% endif %}{% if home %} <span class="fs-6 text-muted">· {{ home|inr }} home &amp; renovation, not counted</span>{% endif %}</div>
@@ -20,8 +24,8 @@
 </div></div>
 {% if groups %}
 <div class="d-flex gap-2 align-items-center mb-2">
-  <a class="btn btn-sm" href="?{% if not unconfirmed_only %}show=unconfirmed{% endif %}{% if by_date %}{% if not unconfirmed_only %}&{% endif %}sort=date{% endif %}">{% if unconfirmed_only %}Show all entries{% else %}Only unconfirmed{% endif %}</a>
-  <a class="btn btn-sm" href="?{% if unconfirmed_only %}show=unconfirmed{% endif %}{% if not by_date %}{% if unconfirmed_only %}&{% endif %}sort=date{% endif %}">{% if by_date %}Largest first{% else %}By date{% endif %}</a>
+  <a class="btn btn-sm" href="{{ show_url }}">{% if unconfirmed_only %}Show all entries{% else %}Only unconfirmed{% endif %}</a>
+  <a class="btn btn-sm" href="{{ sort_url }}">{% if by_date %}Largest first{% else %}By date{% endif %}</a>
   <span class="small text-muted">Change a category and it's saved with the button below, ticked or not. Tick a row, or a whole category, to confirm it.</span>
 </div>
 <form method="post" action="{% url 'statements_review_save' %}" data-primary id="month-form">{% csrf_token %}

@@ -12,13 +12,14 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ai.review import ReviewError
-from core.models import (Account, Category, CategoryRule, Household, SpendCategory, StatementUpload,
-                         Transaction, UploadBatch)
+from core.models import (CATEGORY_GROUPS, Account, Category, CategoryRule, Household, Person, SpendCategory,
+                         StatementUpload, Transaction, UploadBatch)
 
 from . import batch as batches
 from . import importer, matching, rules, spending
 
 MAX_UPLOAD = 25 * 1024 * 1024
+SPEND_TYPE_ROWS = (Category.EXPENSE, Category.SPLIT)
 PARTY_ROWS = (Category.REIMBURSABLE, Category.REIMBURSEMENT, Category.LOAN_GIVEN)
 
 
@@ -211,7 +212,8 @@ def review(request):
 
 def _row_choices():
     """What the editable row in core/includes/review_row.html needs."""
-    return {"categories": Category.choices, "spend_categories": SpendCategory.choices,
+    groups = [(label, [(c.value, c.label) for c in members]) for label, members in CATEGORY_GROUPS]
+    return {"categories": Category.choices, "category_groups": groups, "spend_categories": SpendCategory.choices,
             "investment_accounts": Account.investment_accounts().filter(is_active=True).select_related("owner")}
 
 
@@ -268,7 +270,7 @@ def review_save(request):
     inv_accounts = {a.id: a for a in Account.investment_accounts()}
     for t in Transaction.objects.filter(id__in=ids).select_related("account"):
         cat = request.POST.get(f"cat_{t.id}", t.category)
-        spend = request.POST.get(f"spend_{t.id}", "") if cat == Category.EXPENSE else ""
+        spend = request.POST.get(f"spend_{t.id}", "") if cat in SPEND_TYPE_ROWS else ""
         party = request.POST.get(f"party_{t.id}", t.party).strip()[:60] if cat in PARTY_ROWS else ""
         if party != t.party:
             t.party = party
@@ -351,15 +353,32 @@ def spending_month(request, year, month):
         raise Http404("No such month")
     unconfirmed_only = request.GET.get("show") == "unconfirmed"
     by_date = request.GET.get("sort") == "date"
-    detail = spending.month_detail(start, unconfirmed_only, by_date)
+    people = list(Person.objects.all())
+    who = next((p for p in people if str(p.id) == request.GET.get("who")), None)
+    detail = spending.month_detail(start, unconfirmed_only, by_date, who)
     for g in detail["groups"]:
         for t in g["rows"]:
             t.keyword_guess = rules.keyword_guess(t.description)
     prev_month, next_month = spending.month_neighbours(start)
     return render(request, "core/spending_month.html", {
         **_row_choices(), **detail, "month": start, "prev_month": prev_month, "next_month": next_month,
-        "unconfirmed_only": unconfirmed_only, "by_date": by_date,
+        "unconfirmed_only": unconfirmed_only, "by_date": by_date, "query": request.GET.urlencode(),
+        "tabs": [{"label": "Everyone", "url": _query(request, who=None), "active": who is None}] + [
+            {"label": "Both" if p.is_joint else p.name, "url": _query(request, who=p.id), "active": p == who}
+            for p in people],
+        "show_url": _query(request, show=None if unconfirmed_only else "unconfirmed"),
+        "sort_url": _query(request, sort=None if by_date else "date"),
     })
+
+
+def _query(request, **changes):
+    """This page's query string with some values changed; None removes one."""
+    params = request.GET.copy()
+    for key, value in changes.items():
+        params.pop(key, None)
+        if value is not None:
+            params[key] = value
+    return "?" + params.urlencode()
 
 
 @login_required

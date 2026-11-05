@@ -9,7 +9,7 @@ from core.models import Account, Category, MonthlyExpense, SpendCategory, Statem
 
 ZERO = Decimal("0")
 GRACE_DAYS = 3  # a cycle ending a day or two before month-end still counts as covering the month
-SPEND_ROWS = [Category.EXPENSE, Category.REFUND, Category.LOAN_EMI, Category.HOME]
+SPEND_ROWS = [Category.EXPENSE, Category.REFUND, Category.SPLIT, Category.LOAN_EMI, Category.HOME]
 LABELS = dict(SpendCategory.choices) | {"refunds": "Refunds & cashback", "emi": "Loan EMI", "home": Category.HOME.label}
 
 
@@ -109,11 +109,13 @@ def monthly(months_back=12, confirmed_only=False):
     return rows
 
 
-def month_detail(month, unconfirmed_only=False, by_date=False):
+def month_detail(month, unconfirmed_only=False, by_date=False, owner=None):
     """The rows behind one month on the Spending page, grouped by spend type, biggest first.
-    Totals always cover the whole month; `unconfirmed_only` only hides rows."""
+    `owner` narrows everything to one person's accounts; `unconfirmed_only` only hides rows."""
     qs = (Transaction.objects.filter(category__in=SPEND_ROWS, date__range=(month, _month_end(month)))
           .select_related("account__owner", "investment_account", "matched_with__account"))
+    if owner:
+        qs = qs.filter(account__owner=owner)
     groups = {}
     for t in qs:
         key = {Category.LOAN_EMI: "emi", Category.HOME: "home"}.get(t.category) or _spend_key(t)

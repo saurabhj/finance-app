@@ -678,6 +678,27 @@ class SpendingMonthTests(Setup):
         self.assertEqual(row["spend"], D("3200"))
         self.assertContains(self.client.get("/spending/"), "loans given")
 
+    def test_friends_share_of_a_bill_reduces_that_spend_type(self):
+        t = Transaction.objects.create(statement=StatementUpload.objects.first(), account=self.bank, date=dt.date(2026, 9, 10),
+                                       description="UPI FROM FRIEND", amount=D("400"), dedupe_key="f")
+        self.client.post("/statements/review/save/", {"txn": [t.id], f"cat_{t.id}": "split", f"spend_{t.id}": "dining"})
+        t.refresh_from_db()
+        self.assertEqual((t.category, t.spend_category), ("split", "dining"))
+        groups = {g["key"]: g["total"] for g in spending.month_detail(dt.date(2026, 9, 1))["groups"]}
+        self.assertEqual(groups["dining"], D("800"))
+        row = next(r for r in spending.monthly() if r["month"] == dt.date(2026, 9, 1))
+        self.assertEqual(row["spend"], D("2800"))
+
+    def test_month_page_filters_by_person_and_groups_the_dropdown(self):
+        Transaction.objects.create(statement=StatementUpload.objects.first(), account=self.pbank, date=dt.date(2026, 9, 10),
+                                   description="HERS", amount=D("-300"), category="expense", spend_category="dining", dedupe_key="h")
+        everyone = self.client.get("/spending/2026/9/")
+        self.assertEqual(everyone.context["spend"], D("3500"))
+        self.assertContains(everyone, '<optgroup label="Money in">')
+        one = self.client.get(f"/spending/2026/9/?who={self.p.id}")
+        self.assertEqual((one.context["spend"], one.context["count"]), (D("300"), 1))
+        self.assertContains(one, f"who={self.p.id}")  # next and previous month keep the person
+
     def test_month_neighbours_and_bad_month(self):
         self.assertEqual(spending.month_neighbours(dt.date(2026, 9, 1)), (None, dt.date(2026, 10, 1)))
         self.assertEqual(self.client.get("/spending/2026/13/").status_code, 404)
